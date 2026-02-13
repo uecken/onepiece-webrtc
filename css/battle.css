@@ -135,6 +135,58 @@
     stroke: white;
 }
 
+/* Media control buttons */
+.control-btn.active {
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--text-primary);
+}
+
+.control-btn.muted {
+    background: rgba(100, 100, 100, 0.9);
+    color: white;
+}
+
+.control-btn.muted svg {
+    stroke: white;
+}
+
+.control-btn svg.hidden {
+    display: none;
+}
+
+/* Controls layout - more buttons */
+.controls {
+    gap: 16px;
+}
+
+/* Camera Selection Modal */
+#camera-select-modal .modal-content {
+    max-width: 320px;
+}
+
+.camera-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 20px 0;
+}
+
+.camera-option {
+    width: 100%;
+    padding: 14px 20px;
+    text-align: left;
+    background: var(--bg-secondary);
+    border: 2px solid transparent;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.camera-option:hover {
+    border-color: var(--ocean-blue);
+    background: white;
+}
+
 /* Camera Modal */
 #camera-modal .camera-icon {
     margin-bottom: 24px;

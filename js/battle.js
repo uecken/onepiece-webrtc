@@ -18,6 +18,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const errorMessage = document.getElementById('error-message');
     const errorBackBtn = document.getElementById('error-back');
 
+    // Media control elements
+    const toggleAudioBtn = document.getElementById('toggle-audio');
+    const toggleVideoBtn = document.getElementById('toggle-video');
+    const audioOnIcon = document.getElementById('audio-on-icon');
+    const audioOffIcon = document.getElementById('audio-off-icon');
+    const videoOnIcon = document.getElementById('video-on-icon');
+    const videoOffIcon = document.getElementById('video-off-icon');
+    const cameraSelectModal = document.getElementById('camera-select-modal');
+    const cameraList = document.getElementById('camera-list');
+    const closeCameraModalBtn = document.getElementById('close-camera-modal');
+
     // Get battle parameters from URL
     const params = getUrlParams();
     const battleId = params.get('battleId');
@@ -251,15 +262,112 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Switch camera
+     * Switch camera (front/back toggle)
      */
     async function switchCamera() {
-        try {
-            const newStream = await webrtcService.switchCamera();
-            localVideo.srcObject = newStream;
-        } catch (error) {
-            console.error('Camera switch failed:', error);
-            alert('カメラの切り替えに失敗しました。');
+        const cameras = await webrtcService.getAvailableCameras();
+
+        if (cameras.length <= 1) {
+            // Only one camera, just toggle front/back
+            try {
+                const newStream = await webrtcService.switchCamera();
+                localVideo.srcObject = newStream;
+            } catch (error) {
+                console.error('Camera switch failed:', error);
+                alert('カメラの切り替えに失敗しました。');
+            }
+        } else {
+            // Multiple cameras, show selection modal
+            showCameraSelectModal(cameras);
+        }
+    }
+
+    /**
+     * Show camera selection modal
+     * @param {Array} cameras - Available cameras
+     */
+    function showCameraSelectModal(cameras) {
+        cameraList.innerHTML = '';
+
+        cameras.forEach((camera, index) => {
+            const btn = document.createElement('button');
+            btn.className = 'btn camera-option';
+            btn.textContent = camera.label || `カメラ ${index + 1}`;
+            btn.addEventListener('click', async () => {
+                try {
+                    await webrtcService.switchToCamera(camera.deviceId);
+                    localVideo.srcObject = webrtcService.localStream;
+                    cameraSelectModal.classList.add('hidden');
+
+                    // Update video button state
+                    updateVideoButtonState(true);
+                } catch (error) {
+                    console.error('Camera switch failed:', error);
+                    alert('カメラの切り替えに失敗しました。');
+                }
+            });
+            cameraList.appendChild(btn);
+        });
+
+        cameraSelectModal.classList.remove('hidden');
+    }
+
+    /**
+     * Toggle audio on/off
+     */
+    function toggleAudio() {
+        const isEnabled = webrtcService.toggleAudio();
+        updateAudioButtonState(isEnabled);
+    }
+
+    /**
+     * Toggle video on/off
+     */
+    function toggleVideo() {
+        const isEnabled = webrtcService.toggleVideo();
+        updateVideoButtonState(isEnabled);
+
+        // Show/hide local video preview
+        if (!isEnabled) {
+            localVideo.style.opacity = '0.3';
+        } else {
+            localVideo.style.opacity = '1';
+        }
+    }
+
+    /**
+     * Update audio button state
+     * @param {boolean} isEnabled - Audio enabled state
+     */
+    function updateAudioButtonState(isEnabled) {
+        if (isEnabled) {
+            toggleAudioBtn.classList.add('active');
+            toggleAudioBtn.classList.remove('muted');
+            audioOnIcon.classList.remove('hidden');
+            audioOffIcon.classList.add('hidden');
+        } else {
+            toggleAudioBtn.classList.remove('active');
+            toggleAudioBtn.classList.add('muted');
+            audioOnIcon.classList.add('hidden');
+            audioOffIcon.classList.remove('hidden');
+        }
+    }
+
+    /**
+     * Update video button state
+     * @param {boolean} isEnabled - Video enabled state
+     */
+    function updateVideoButtonState(isEnabled) {
+        if (isEnabled) {
+            toggleVideoBtn.classList.add('active');
+            toggleVideoBtn.classList.remove('muted');
+            videoOnIcon.classList.remove('hidden');
+            videoOffIcon.classList.add('hidden');
+        } else {
+            toggleVideoBtn.classList.remove('active');
+            toggleVideoBtn.classList.add('muted');
+            videoOnIcon.classList.add('hidden');
+            videoOffIcon.classList.remove('hidden');
         }
     }
 
@@ -268,12 +376,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         const success = await initializeCamera();
         if (success) {
             await initializeConnection();
+            // Initialize media button states
+            updateAudioButtonState(webrtcService.isAudioEnabled);
+            updateVideoButtonState(webrtcService.isVideoEnabled);
         }
     });
 
+    toggleAudioBtn.addEventListener('click', toggleAudio);
+    toggleVideoBtn.addEventListener('click', toggleVideo);
     switchCameraBtn.addEventListener('click', switchCamera);
     endBattleBtn.addEventListener('click', endBattle);
     errorBackBtn.addEventListener('click', () => navigateToMatching());
+    closeCameraModalBtn.addEventListener('click', () => cameraSelectModal.classList.add('hidden'));
 
     // Handle page unload
     window.addEventListener('beforeunload', () => {

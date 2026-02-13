@@ -24,12 +24,15 @@ const ISLAND_CONFIG = [
     { id: 'skypiea', name: 'Skypiea Island', description: 'Island in the sky' }
 ];
 
-// Video constraints for mobile
-const VIDEO_CONSTRAINTS = {
+// Media constraints for mobile
+const MEDIA_CONSTRAINTS = {
     video: {
         facingMode: 'user',
         width: { ideal: 640, max: 1280 },
         height: { ideal: 480, max: 720 }
     },
-    audio: false
+    audio: true
 };
+
+// Legacy alias
+const VIDEO_CONSTRAINTS = MEDIA_CONSTRAINTS;

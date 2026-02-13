@@ -11,6 +11,11 @@ class WebRTCService {
         this.onRemoteStreamCallback = null;
         this.onIceCandidateCallback = null;
         this.onConnectionStateChangeCallback = null;
+        // Media state
+        this.isAudioEnabled = true;
+        this.isVideoEnabled = true;
+        this.currentDeviceId = null;
+        this.availableCameras = [];
     }
 
     /**
@@ -223,6 +228,106 @@ class WebRTCService {
             console.log('Camera switched to:', newFacingMode);
 
             return newStream;
+        } catch (error) {
+            console.error('Error switching camera:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get available cameras
+     * @returns {Promise<Array>} List of video input devices
+     */
+    async getAvailableCameras() {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            this.availableCameras = devices.filter(device => device.kind === 'videoinput');
+            console.log('Available cameras:', this.availableCameras.length);
+            return this.availableCameras;
+        } catch (error) {
+            console.error('Error getting cameras:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Toggle audio on/off
+     * @returns {boolean} New audio state
+     */
+    toggleAudio() {
+        if (this.localStream) {
+            const audioTracks = this.localStream.getAudioTracks();
+            audioTracks.forEach(track => {
+                track.enabled = !track.enabled;
+                this.isAudioEnabled = track.enabled;
+            });
+            console.log('Audio:', this.isAudioEnabled ? 'ON' : 'OFF');
+        }
+        return this.isAudioEnabled;
+    }
+
+    /**
+     * Toggle video on/off
+     * @returns {boolean} New video state
+     */
+    toggleVideo() {
+        if (this.localStream) {
+            const videoTracks = this.localStream.getVideoTracks();
+            videoTracks.forEach(track => {
+                track.enabled = !track.enabled;
+                this.isVideoEnabled = track.enabled;
+            });
+            console.log('Video:', this.isVideoEnabled ? 'ON' : 'OFF');
+        }
+        return this.isVideoEnabled;
+    }
+
+    /**
+     * Switch to specific camera by device ID
+     * @param {string} deviceId - Camera device ID
+     * @returns {Promise<MediaStream>} New media stream
+     */
+    async switchToCamera(deviceId) {
+        // Stop current video track
+        if (this.localStream) {
+            const videoTracks = this.localStream.getVideoTracks();
+            videoTracks.forEach(track => track.stop());
+        }
+
+        try {
+            const constraints = {
+                video: {
+                    deviceId: { exact: deviceId },
+                    width: { ideal: 640, max: 1280 },
+                    height: { ideal: 480, max: 720 }
+                },
+                audio: this.localStream?.getAudioTracks().length > 0
+            };
+
+            const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+            // Replace video track in peer connection
+            const videoTrack = newStream.getVideoTracks()[0];
+            if (this.peerConnection) {
+                const senders = this.peerConnection.getSenders();
+                const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+                if (videoSender) {
+                    await videoSender.replaceTrack(videoTrack);
+                }
+            }
+
+            // Update local stream
+            const oldVideoTrack = this.localStream?.getVideoTracks()[0];
+            if (oldVideoTrack) {
+                this.localStream.removeTrack(oldVideoTrack);
+            }
+            this.localStream.addTrack(videoTrack);
+
+            this.currentDeviceId = deviceId;
+            this.isVideoEnabled = true;
+            console.log('Switched to camera:', deviceId);
+
+            return this.localStream;
         } catch (error) {
             console.error('Error switching camera:', error);
             throw error;
