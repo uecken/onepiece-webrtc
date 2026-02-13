@@ -1,6 +1,5 @@
 /**
- * Battle Screen Logic
- * Handles WebRTC connection and video display
+ * Battle Screen Logic - Google Spreadsheet Version
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -29,26 +28,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     const cameraList = document.getElementById('camera-list');
     const closeCameraModalBtn = document.getElementById('close-camera-modal');
 
-    // Get battle parameters from URL
+    // Get battle parameters
     const params = getUrlParams();
     const battleId = params.get('battleId');
-    const role = params.get('role'); // 'creator' or 'joiner'
+    const role = params.get('role');
+    const islandId = params.get('islandId') || localStorage.getItem('currentIslandId');
 
-    // Validate parameters
     if (!battleId || !role) {
         showErrorModal('不正な対戦パラメータです。');
         return;
     }
 
-    // Get user ID
     const userId = getOrCreateUserId();
     if (!userId) {
         showErrorModal('ユーザーIDが見つかりません。');
         return;
     }
 
+    // Store island ID for cleanup
+    localStorage.setItem('currentIslandId', islandId || '');
+
     // Initialize services
-    const firebaseService = new FirebaseService();
+    const spreadsheetService = new SpreadsheetService();
     const webrtcService = new WebRTCService();
 
     // Battle state
@@ -58,8 +59,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Update status display
-     * @param {string} status - Status type
-     * @param {string} text - Status text
      */
     function updateStatus(status, text) {
         connectionIndicator.className = `indicator ${status}`;
@@ -68,7 +67,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Show error modal
-     * @param {string} message - Error message
      */
     function showErrorModal(message) {
         errorMessage.textContent = message;
@@ -78,7 +76,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Initialize camera
-     * @returns {Promise<boolean>} Success
      */
     async function initializeCamera() {
         try {
@@ -95,8 +92,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Handle remote stream received
-     * @param {MediaStream} stream - Remote media stream
+     * Handle remote stream
      */
     function onRemoteStream(stream) {
         console.log('Remote stream received');
@@ -113,11 +109,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Handle ICE candidate
-     * @param {RTCIceCandidate} candidate - ICE candidate
      */
     async function onIceCandidate(candidate) {
         try {
-            await firebaseService.writeIceCandidate(battleId, candidate, userId);
+            await spreadsheetService.writeIceCandidate(battleId, candidate, userId);
         } catch (error) {
             console.error('Error writing ICE candidate:', error);
         }
@@ -125,10 +120,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Handle connection state change
-     * @param {string} state - Connection state
      */
     function onConnectionStateChange(state) {
-        console.log('Connection state changed:', state);
+        console.log('Connection state:', state);
 
         switch (state) {
             case 'new':
@@ -137,8 +131,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 break;
             case 'connected':
                 updateStatus('connected', '対戦中!');
-                // Update battle status in Firebase
-                firebaseService.updateBattleStatus(battleId, 'connected').catch(console.error);
+                // Update battle status in Spreadsheet
+                spreadsheetService.updateBattleStatus(battleId, 'connected').catch(console.error);
                 break;
             case 'disconnected':
                 updateStatus('disconnected', '接続が切断されました');
@@ -147,9 +141,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             case 'failed':
                 updateStatus('disconnected', '接続に失敗しました');
                 handleDisconnect();
-                break;
-            case 'closed':
-                updateStatus('disconnected', '接続終了');
                 break;
         }
     }
@@ -160,7 +151,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function initializeConnection() {
         updateStatus('connecting', 'WebRTC接続を初期化中...');
 
-        // Create peer connection
         webrtcService.createPeerConnection(
             onRemoteStream,
             onIceCandidate,
@@ -168,23 +158,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         );
 
         if (role === 'creator') {
-            // Creator creates and sends offer
             updateStatus('connecting', 'オファーを作成中...');
 
             try {
                 const offer = await webrtcService.createOffer();
-                await firebaseService.writeOffer(battleId, {
+                await spreadsheetService.writeOffer(battleId, {
                     sdp: offer.sdp,
                     type: offer.type
                 }, userId);
 
                 updateStatus('connecting', '相手の応答を待機中...');
 
-                // Listen for answer
-                firebaseService.subscribeToAnswer(battleId, async (answer) => {
+                // Poll for answer
+                spreadsheetService.startAnswerPolling(battleId, async (answer) => {
                     if (answer && !answerReceived) {
                         answerReceived = true;
-                        console.log('Answer received from Firebase');
+                        console.log('Answer received');
                         try {
                             await webrtcService.handleAnswer(answer);
                         } catch (error) {
@@ -198,18 +187,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
         } else {
-            // Joiner waits for offer, then creates answer
             updateStatus('connecting', 'オファーを待機中...');
 
-            firebaseService.subscribeToOffer(battleId, async (offer) => {
+            // Poll for offer
+            spreadsheetService.startOfferPolling(battleId, async (offer) => {
                 if (offer && !offerReceived) {
                     offerReceived = true;
-                    console.log('Offer received from Firebase');
+                    console.log('Offer received');
 
                     try {
                         updateStatus('connecting', 'アンサーを作成中...');
                         const answer = await webrtcService.handleOffer(offer);
-                        await firebaseService.writeAnswer(battleId, {
+                        await spreadsheetService.writeAnswer(battleId, {
                             sdp: answer.sdp,
                             type: answer.type
                         }, userId);
@@ -222,8 +211,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Subscribe to ICE candidates from the other user
-        firebaseService.subscribeToIceCandidates(battleId, userId, async (candidate) => {
+        // Poll for ICE candidates
+        spreadsheetService.startIceCandidatesPolling(battleId, userId, async (candidate) => {
             try {
                 await webrtcService.addIceCandidate(candidate);
             } catch (error) {
@@ -236,22 +225,20 @@ document.addEventListener('DOMContentLoaded', async () => {
      * Handle disconnect
      */
     async function handleDisconnect() {
-        // Cleanup WebRTC
         webrtcService.disconnect();
+        spreadsheetService.cleanup();
 
-        // Cleanup Firebase subscriptions
-        firebaseService.cleanup();
-
-        // End battle and reset island
-        if (battle && battle.islandId) {
+        const storedIslandId = localStorage.getItem('currentIslandId');
+        if (storedIslandId) {
             try {
-                await firebaseService.endBattle(battleId, battle.islandId);
+                await spreadsheetService.endBattle(battleId, storedIslandId);
             } catch (error) {
                 console.error('Error ending battle:', error);
             }
         }
 
-        // Return to matching screen after delay
+        localStorage.removeItem('currentIslandId');
+
         updateStatus('disconnected', '島選択に戻ります...');
         setTimeout(() => {
             navigateToMatching();
@@ -291,7 +278,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Show camera selection modal
-     * @param {Array} cameras - Available cameras
      */
     function showCameraSelectModal(cameras) {
         cameraList.innerHTML = '';
@@ -305,8 +291,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     await webrtcService.switchToCamera(camera.deviceId);
                     localVideo.srcObject = webrtcService.localStream;
                     cameraSelectModal.classList.add('hidden');
-
-                    // Update video button state
                     updateVideoButtonState(true);
                 } catch (error) {
                     console.error('Camera switch failed:', error);
@@ -338,7 +322,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const isEnabled = webrtcService.toggleVideo();
         updateVideoButtonState(isEnabled);
 
-        // Show/hide local video preview
         if (!isEnabled) {
             localVideo.style.opacity = '0.3';
         } else {
@@ -348,7 +331,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Update audio button state
-     * @param {boolean} isEnabled - Audio enabled state
      */
     function updateAudioButtonState(isEnabled) {
         if (isEnabled) {
@@ -366,7 +348,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Update video button state
-     * @param {boolean} isEnabled - Video enabled state
      */
     function updateVideoButtonState(isEnabled) {
         if (isEnabled) {
@@ -400,27 +381,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     errorBackBtn.addEventListener('click', () => navigateToMatching());
     closeCameraModalBtn.addEventListener('click', () => cameraSelectModal.classList.add('hidden'));
 
-    // Handle page unload
     window.addEventListener('beforeunload', () => {
         webrtcService.disconnect();
-        firebaseService.cleanup();
-    });
-
-    // Handle visibility change (mobile)
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-            // Could pause video or show warning
-            console.log('App went to background');
-        }
+        spreadsheetService.cleanup();
     });
 
     // Initialize
     try {
-        updateStatus('connecting', 'Firebaseに接続中...');
-        await firebaseService.init();
+        if (GAS_WEB_APP_URL.includes('YOUR_DEPLOYMENT_ID')) {
+            showErrorModal('js/config.jsのGAS_WEB_APP_URLを設定してください。');
+            return;
+        }
+
+        updateStatus('connecting', 'サーバーに接続中...');
 
         // Get battle info
-        battle = await firebaseService.getBattle(battleId);
+        battle = await spreadsheetService.getBattle(battleId);
         if (!battle) {
             showErrorModal('対戦が見つかりません。');
             return;
@@ -432,10 +408,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        // Store island ID for cleanup
+        if (battle.islandId) {
+            localStorage.setItem('currentIslandId', battle.islandId);
+        }
+
         updateStatus('connecting', 'カメラへのアクセスを許可してください');
 
         // Subscribe to battle updates
-        firebaseService.subscribeToBattle(battleId, (updatedBattle) => {
+        spreadsheetService.startBattlePolling(battleId, (updatedBattle) => {
             battle = updatedBattle;
             if (battle.status === 'ended') {
                 updateStatus('disconnected', '対戦が終了しました');

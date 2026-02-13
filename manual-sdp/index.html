@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>WebRTC 手動接続</title>
+    <style>
+        /* Reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* CSS Variables - One Piece Theme */
+        :root {
+            --primary-red: #DC3545;
+            --primary-gold: #FFD700;
+            --ocean-blue: #1E90FF;
+            --dark-blue: #191970;
+            --wood-brown: #8B4513;
+
+            --status-empty: #28A745;
+            --status-waiting: #FFC107;
+            --status-battle: #DC3545;
+
+            --bg-primary: #F0E6D2;
+            --bg-secondary: #FFFACD;
+            --bg-dark: #2C3E50;
+            --text-primary: #2C3E50;
+            --text-secondary: #6C757D;
+            --text-light: #FFFFFF;
+
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
+
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 16px;
+            --radius-full: 9999px;
+
+            --transition-fast: 0.15s ease;
+            --transition-normal: 0.25s ease;
+        }
+
+        /* Base Styles */
+        html {
+            font-size: 16px;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            line-height: 1.5;
+        }
+
+        /* Container */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 16px;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            padding: 16px 0;
+            border-bottom: 2px solid var(--wood-brown);
+            margin-bottom: 16px;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            color: var(--dark-blue);
+            margin-bottom: 8px;
+        }
+
+        .status-bar {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-full);
+            font-size: 0.875rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-secondary);
+        }
+
+        .status-dot.connecting {
+            background: var(--status-waiting);
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-dot.connected {
+            background: var(--status-empty);
+        }
+
+        .status-dot.disconnected {
+            background: var(--status-battle);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.9); }
+        }
+
+        /* Section */
+        .section {
+            background: white;
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .section h2 {
+            font-size: 1.125rem;
+            color: var(--dark-blue);
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--bg-primary);
+        }
+
+        /* Role Selection */
+        .role-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .role-buttons button {
+            flex: 1;
+            padding: 16px;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+        }
+
+        .role-buttons button:active {
+            transform: scale(0.98);
+        }
+
+        #btn-offerer {
+            background: linear-gradient(135deg, var(--ocean-blue), var(--dark-blue));
+            color: white;
+        }
+
+        #btn-answerer {
+            background: linear-gradient(135deg, var(--primary-gold), #FFA500);
+            color: var(--text-primary);
+        }
+
+        /* Video Section */
+        .video-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        @media (max-width: 500px) {
+            .video-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .video-wrapper {
+            position: relative;
+            background: var(--bg-dark);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            aspect-ratio: 4/3;
+        }
+
+        .video-wrapper video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-wrapper.local video {
+            transform: scaleX(-1);
+        }
+
+        .video-label {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+        }
+
+        .placeholder {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            background: var(--bg-dark);
+        }
+
+        .placeholder p {
+            margin-top: 12px;
+            font-size: 0.875rem;
+            color: #999;
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.2);
+            border-top-color: var(--ocean-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* SDP Areas */
+        .sdp-area {
+            margin-bottom: 16px;
+        }
+
+        .sdp-area:last-child {
+            margin-bottom: 0;
+        }
+
+        .sdp-area label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .sdp-area textarea {
+            width: 100%;
+            height: 120px;
+            padding: 12px;
+            border: 2px solid var(--bg-primary);
+            border-radius: var(--radius-md);
+            font-family: monospace;
+            font-size: 0.75rem;
+            resize: vertical;
+            transition: border-color var(--transition-fast);
+        }
+
+        .sdp-area textarea:focus {
+            outline: none;
+            border-color: var(--ocean-blue);
+        }
+
+        .sdp-area textarea[readonly] {
+            background: var(--bg-secondary);
+        }
+
+        .sdp-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform var(--transition-fast), opacity var(--transition-fast);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn.primary {
+            background: linear-gradient(135deg, var(--ocean-blue), var(--dark-blue));
+            color: white;
+        }
+
+        .btn.secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--text-secondary);
+        }
+
+        .btn.success {
+            background: linear-gradient(135deg, var(--status-empty), #1e7e34);
+            color: white;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .control-btn {
+            width: 50px;
+            height: 50px;
+            border: none;
+            border-radius: 50%;
+            background: var(--bg-dark);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform var(--transition-fast), background var(--transition-fast);
+        }
+
+        .control-btn:active {
+            transform: scale(0.9);
+        }
+
+        .control-btn.active {
+            background: var(--ocean-blue);
+        }
+
+        .control-btn.danger {
+            background: var(--primary-red);
+        }
+
+        .control-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        /* Instructions */
+        details {
+            cursor: pointer;
+        }
+
+        details summary {
+            font-weight: 600;
+            color: var(--dark-blue);
+            padding: 8px 0;
+        }
+
+        details ol {
+            margin-top: 12px;
+            padding-left: 24px;
+        }
+
+        details li {
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+        }
+
+        /* Hidden */
+        .hidden {
+            display: none !important;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-dark);
+            color: white;
+            padding: 12px 24px;
+            border-radius: var(--radius-md);
+            font-size: 0.875rem;
+            z-index: 1000;
+            animation: slideUp 0.3s ease;
+        }
+
+        .toast.error {
+            background: var(--primary-red);
+        }
+
+        .toast.success {
+            background: var(--status-empty);
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+
+        /* Safe Area */
+        @supports (padding: max(0px)) {
+            .container {
+                padding-left: max(16px, env(safe-area-inset-left));
+                padding-right: max(16px, env(safe-area-inset-right));
+                padding-bottom: max(16px, env(safe-area-inset-bottom));
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>WebRTC 手動接続</h1>
+            <div class="status-bar">
+                <div id="status-dot" class="status-dot"></div>
+                <span id="status-text">未接続</span>
+            </div>
+        </header>
+
+        <!-- Role Selection -->
+        <section id="role-selection" class="section">
+            <h2>役割を選択</h2>
+            <div class="role-buttons">
+                <button id="btn-offerer">発信者</button>
+                <button id="btn-answerer">応答者</button>
+            </div>
+        </section>
+
+        <!-- Video Section -->
+        <section id="video-section" class="section hidden">
+            <h2>ビデオ</h2>
+            <div class="video-container">
+                <div class="video-wrapper local">
+                    <video id="local-video" autoplay playsinline muted></video>
+                    <span class="video-label">あなた</span>
+                </div>
+                <div class="video-wrapper">
+                    <video id="remote-video" autoplay playsinline></video>
+                    <span class="video-label">相手</span>
+                    <div id="remote-placeholder" class="placeholder">
+                        <div class="spinner"></div>
+                        <p>相手の映像を待機中...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Offerer Section -->
+        <section id="offerer-section" class="section hidden">
+            <h2>Step 1: オファーを送信</h2>
+            <div class="sdp-area">
+                <label>あなたのオファー（相手に送信）:</label>
+                <textarea id="local-offer" readonly placeholder="生成中..."></textarea>
+                <div class="sdp-buttons">
+                    <button id="copy-offer" class="btn primary" disabled>コピー</button>
+                </div>
+            </div>
+            <div class="sdp-area">
+                <label>相手のアンサー（ここに貼り付け）:</label>
+                <textarea id="remote-answer" placeholder="相手から受け取ったアンサーを貼り付けてください"></textarea>
+                <div class="sdp-buttons">
+                    <button id="apply-answer" class="btn success">適用</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Answerer Section -->
+        <section id="answerer-section" class="section hidden">
+            <h2>Step 1: オファーを受信</h2>
+            <div class="sdp-area">
+                <label>相手のオファー（ここに貼り付け）:</label>
+                <textarea id="remote-offer" placeholder="相手から受け取ったオファーを貼り付けてください"></textarea>
+                <div class="sdp-buttons">
+                    <button id="apply-offer" class="btn success">適用</button>
+                </div>
+            </div>
+            <div class="sdp-area">
+                <label>あなたのアンサー（相手に送信）:</label>
+                <textarea id="local-answer" readonly placeholder="オファー適用後に生成されます"></textarea>
+                <div class="sdp-buttons">
+                    <button id="copy-answer" class="btn primary" disabled>コピー</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Controls -->
+        <section id="controls-section" class="section hidden">
+            <div class="controls">
+                <button id="toggle-audio" class="control-btn active" title="マイクON/OFF">
+                    <svg id="mic-on" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
+                    </svg>
+                    <svg id="mic-off" class="hidden" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 11c0 1.19-.34 2.3-.9 3.28l-1.23-1.23c.27-.62.43-1.31.43-2.05H19zm-4.02.22c0-.76-.43-1.43-1.08-1.77L19 4.36 17.59 3 3 17.59 4.41 19l3.65-3.65c.62.35 1.3.6 2.02.73V20h2v-3.92c2.61-.48 4.58-2.6 4.92-5.19l-.02-.67zM12 14c-.55 0-1.07-.18-1.51-.47l5.98-5.98c.29.44.47.96.47 1.51 0 1.1-.45 2.1-1.17 2.83L12 15.66V14zm0-9c-1.1 0-2 .9-2 2v.18l4 4V7c0-1.1-.9-2-2-2z"/>
+                    </svg>
+                </button>
+                <button id="toggle-video" class="control-btn active" title="カメラON/OFF">
+                    <svg id="video-on" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+                    </svg>
+                    <svg id="video-off" class="hidden" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M21 6.5l-4 4V7c0-.55-.45-1-1-1H9.82L21 17.18V6.5zM3.27 2L2 3.27 4.73 6H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.21 0 .39-.08.55-.18L19.73 21 21 19.73 3.27 2z"/>
+                    </svg>
+                </button>
+                <button id="switch-camera" class="control-btn" title="カメラ切替">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 12c0 1.66 1.34 3 3 3s3-1.34 3-3-1.34-3-3-3-3 1.34-3 3zm9-9h-6l-2 2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2h-2l-2-2zm-6 14c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
+                    </svg>
+                </button>
+                <button id="disconnect" class="control-btn danger" title="切断">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
+                    </svg>
+                </button>
+            </div>
+        </section>
+
+        <!-- Instructions -->
+        <section class="section">
+            <details>
+                <summary>使い方</summary>
+                <ol>
+                    <li>一方が「発信者」、もう一方が「応答者」を選択</li>
+                    <li>発信者: オファーをコピーして相手に送信（メール、LINE等）</li>
+                    <li>応答者: オファーを貼り付けて「適用」→ 生成されたアンサーを相手に送信</li>
+                    <li>発信者: アンサーを貼り付けて「適用」</li>
+                    <li>接続完了！ビデオ通話が開始されます</li>
+                </ol>
+            </details>
+        </section>
+    </div>
+
+    <script>
+        // ========================================
+        // Configuration
+        // ========================================
+        const STUN_SERVERS = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' }
+        ];
+
+        const MEDIA_CONSTRAINTS = {
+            video: {
+                facingMode: 'user',
+                width: { ideal: 640, max: 1280 },
+                height: { ideal: 480, max: 720 }
+            },
+            audio: true
+        };
+
+        const ICE_GATHERING_TIMEOUT = 10000; // 10 seconds
+
+        // ========================================
+        // ManualWebRTC Class
+        // ========================================
+        class ManualWebRTC {
+            constructor() {
+                this.peerConnection = null;
+                this.localStream = null;
+                this.remoteStream = null;
+                this.isAudioEnabled = true;
+                this.isVideoEnabled = true;
+                this.role = null;
+
+                // Callbacks
+                this.onRemoteStream = null;
+                this.onConnectionStateChange = null;
+                this.onError = null;
+            }
+
+            async initCamera() {
+                try {
+                    this.localStream = await navigator.mediaDevices.getUserMedia(MEDIA_CONSTRAINTS);
+                    return this.localStream;
+                } catch (error) {
+                    console.error('Camera access error:', error);
+                    throw new Error('カメラへのアクセスが拒否されました');
+                }
+            }
+
+            createPeerConnection() {
+                this.peerConnection = new RTCPeerConnection({
+                    iceServers: STUN_SERVERS
+                });
+
+                // Add local tracks
+                if (this.localStream) {
+                    this.localStream.getTracks().forEach(track => {
+                        this.peerConnection.addTrack(track, this.localStream);
+                    });
+                }
+
+                // Remote stream handler
+                this.peerConnection.ontrack = (event) => {
+                    console.log('Remote track received');
+                    this.remoteStream = event.streams[0];
+                    if (this.onRemoteStream) {
+                        this.onRemoteStream(this.remoteStream);
+                    }
+                };
+
+                // Connection state handler
+                this.peerConnection.onconnectionstatechange = () => {
+                    console.log('Connection state:', this.peerConnection.connectionState);
+                    if (this.onConnectionStateChange) {
+                        this.onConnectionStateChange(this.peerConnection.connectionState);
+                    }
+                };
+
+                // ICE connection state handler
+                this.peerConnection.oniceconnectionstatechange = () => {
+                    console.log('ICE connection state:', this.peerConnection.iceConnectionState);
+                };
+            }
+
+            waitForIceGatheringComplete() {
+                return new Promise((resolve) => {
+                    if (this.peerConnection.iceGatheringState === 'complete') {
+                        resolve();
+                        return;
+                    }
+
+                    const checkState = () => {
+                        if (this.peerConnection.iceGatheringState === 'complete') {
+                            this.peerConnection.removeEventListener('icegatheringstatechange', checkState);
+                            resolve();
+                        }
+                    };
+
+                    this.peerConnection.addEventListener('icegatheringstatechange', checkState);
+
+                    // Timeout fallback
+                    setTimeout(() => {
+                        this.peerConnection.removeEventListener('icegatheringstatechange', checkState);
+                        console.log('ICE gathering timeout, proceeding with available candidates');
+                        resolve();
+                    }, ICE_GATHERING_TIMEOUT);
+                });
+            }
+
+            async createOffer() {
+                this.role = 'offerer';
+                this.createPeerConnection();
+
+                const offer = await this.peerConnection.createOffer();
+                await this.peerConnection.setLocalDescription(offer);
+
+                console.log('Waiting for ICE gathering to complete...');
+                await this.waitForIceGatheringComplete();
+
+                return this.peerConnection.localDescription.sdp;
+            }
+
+            async handleOffer(offerSdp) {
+                this.role = 'answerer';
+                this.createPeerConnection();
+
+                const offer = new RTCSessionDescription({
+                    type: 'offer',
+                    sdp: offerSdp
+                });
+
+                await this.peerConnection.setRemoteDescription(offer);
+                const answer = await this.peerConnection.createAnswer();
+                await this.peerConnection.setLocalDescription(answer);
+
+                console.log('Waiting for ICE gathering to complete...');
+                await this.waitForIceGatheringComplete();
+
+                return this.peerConnection.localDescription.sdp;
+            }
+
+            async handleAnswer(answerSdp) {
+                const answer = new RTCSessionDescription({
+                    type: 'answer',
+                    sdp: answerSdp
+                });
+
+                await this.peerConnection.setRemoteDescription(answer);
+                console.log('Answer applied successfully');
+            }
+
+            toggleAudio() {
+                if (this.localStream) {
+                    const audioTracks = this.localStream.getAudioTracks();
+                    audioTracks.forEach(track => {
+                        track.enabled = !track.enabled;
+                        this.isAudioEnabled = track.enabled;
+                    });
+                }
+                return this.isAudioEnabled;
+            }
+
+            toggleVideo() {
+                if (this.localStream) {
+                    const videoTracks = this.localStream.getVideoTracks();
+                    videoTracks.forEach(track => {
+                        track.enabled = !track.enabled;
+                        this.isVideoEnabled = track.enabled;
+                    });
+                }
+                return this.isVideoEnabled;
+            }
+
+            async switchCamera() {
+                if (!this.localStream) return null;
+
+                const currentTrack = this.localStream.getVideoTracks()[0];
+                const currentFacingMode = currentTrack?.getSettings()?.facingMode || 'user';
+                const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+
+                // Stop current video track
+                currentTrack?.stop();
+
+                try {
+                    const newStream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: newFacingMode },
+                        audio: false
+                    });
+
+                    const newVideoTrack = newStream.getVideoTracks()[0];
+
+                    // Replace track in local stream
+                    this.localStream.removeTrack(currentTrack);
+                    this.localStream.addTrack(newVideoTrack);
+
+                    // Replace track in peer connection
+                    if (this.peerConnection) {
+                        const senders = this.peerConnection.getSenders();
+                        const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+                        if (videoSender) {
+                            await videoSender.replaceTrack(newVideoTrack);
+                        }
+                    }
+
+                    return this.localStream;
+                } catch (error) {
+                    console.error('Camera switch error:', error);
+                    throw new Error('カメラの切り替えに失敗しました');
+                }
+            }
+
+            disconnect() {
+                if (this.localStream) {
+                    this.localStream.getTracks().forEach(track => track.stop());
+                    this.localStream = null;
+                }
+
+                if (this.remoteStream) {
+                    this.remoteStream.getTracks().forEach(track => track.stop());
+                    this.remoteStream = null;
+                }
+
+                if (this.peerConnection) {
+                    this.peerConnection.close();
+                    this.peerConnection = null;
+                }
+
+                this.role = null;
+                this.isAudioEnabled = true;
+                this.isVideoEnabled = true;
+            }
+
+            getConnectionState() {
+                return this.peerConnection?.connectionState || 'disconnected';
+            }
+        }
+
+        // ========================================
+        // UI Controller
+        // ========================================
+        class UIController {
+            constructor(webrtc) {
+                this.webrtc = webrtc;
+                this.elements = {};
+                this.initElements();
+                this.bindEvents();
+                this.setupWebRTCCallbacks();
+            }
+
+            initElements() {
+                this.elements = {
+                    // Sections
+                    roleSelection: document.getElementById('role-selection'),
+                    videoSection: document.getElementById('video-section'),
+                    offererSection: document.getElementById('offerer-section'),
+                    answererSection: document.getElementById('answerer-section'),
+                    controlsSection: document.getElementById('controls-section'),
+
+                    // Status
+                    statusDot: document.getElementById('status-dot'),
+                    statusText: document.getElementById('status-text'),
+
+                    // Role buttons
+                    btnOfferer: document.getElementById('btn-offerer'),
+                    btnAnswerer: document.getElementById('btn-answerer'),
+
+                    // Videos
+                    localVideo: document.getElementById('local-video'),
+                    remoteVideo: document.getElementById('remote-video'),
+                    remotePlaceholder: document.getElementById('remote-placeholder'),
+
+                    // Offerer elements
+                    localOffer: document.getElementById('local-offer'),
+                    copyOffer: document.getElementById('copy-offer'),
+                    remoteAnswer: document.getElementById('remote-answer'),
+                    applyAnswer: document.getElementById('apply-answer'),
+
+                    // Answerer elements
+                    remoteOffer: document.getElementById('remote-offer'),
+                    applyOffer: document.getElementById('apply-offer'),
+                    localAnswer: document.getElementById('local-answer'),
+                    copyAnswer: document.getElementById('copy-answer'),
+
+                    // Controls
+                    toggleAudio: document.getElementById('toggle-audio'),
+                    toggleVideo: document.getElementById('toggle-video'),
+                    switchCamera: document.getElementById('switch-camera'),
+                    disconnect: document.getElementById('disconnect'),
+
+                    // Icons
+                    micOn: document.getElementById('mic-on'),
+                    micOff: document.getElementById('mic-off'),
+                    videoOn: document.getElementById('video-on'),
+                    videoOff: document.getElementById('video-off')
+                };
+            }
+
+            bindEvents() {
+                // Role selection
+                this.elements.btnOfferer.addEventListener('click', () => this.startAsOfferer());
+                this.elements.btnAnswerer.addEventListener('click', () => this.startAsAnswerer());
+
+                // Offerer actions
+                this.elements.copyOffer.addEventListener('click', () => this.copyToClipboard(this.elements.localOffer.value, 'オファーをコピーしました'));
+                this.elements.applyAnswer.addEventListener('click', () => this.applyAnswer());
+
+                // Answerer actions
+                this.elements.applyOffer.addEventListener('click', () => this.applyOffer());
+                this.elements.copyAnswer.addEventListener('click', () => this.copyToClipboard(this.elements.localAnswer.value, 'アンサーをコピーしました'));
+
+                // Media controls
+                this.elements.toggleAudio.addEventListener('click', () => this.handleToggleAudio());
+                this.elements.toggleVideo.addEventListener('click', () => this.handleToggleVideo());
+                this.elements.switchCamera.addEventListener('click', () => this.handleSwitchCamera());
+                this.elements.disconnect.addEventListener('click', () => this.handleDisconnect());
+            }
+
+            setupWebRTCCallbacks() {
+                this.webrtc.onRemoteStream = (stream) => {
+                    this.elements.remoteVideo.srcObject = stream;
+                    this.elements.remotePlaceholder.classList.add('hidden');
+                };
+
+                this.webrtc.onConnectionStateChange = (state) => {
+                    this.updateStatus(state);
+                };
+            }
+
+            async startAsOfferer() {
+                try {
+                    this.updateStatus('connecting', 'カメラ起動中...');
+
+                    // Initialize camera
+                    const stream = await this.webrtc.initCamera();
+                    this.elements.localVideo.srcObject = stream;
+
+                    // Show sections
+                    this.elements.roleSelection.classList.add('hidden');
+                    this.elements.videoSection.classList.remove('hidden');
+                    this.elements.offererSection.classList.remove('hidden');
+                    this.elements.controlsSection.classList.remove('hidden');
+
+                    // Create offer
+                    this.updateStatus('connecting', 'ICE候補収集中...');
+                    this.elements.localOffer.value = '生成中...';
+
+                    const offerSdp = await this.webrtc.createOffer();
+                    this.elements.localOffer.value = offerSdp;
+                    this.elements.copyOffer.disabled = false;
+
+                    this.updateStatus('waiting', '相手にオファーを送信してください');
+                } catch (error) {
+                    this.showToast(error.message, 'error');
+                    this.updateStatus('disconnected', 'エラー');
+                }
+            }
+
+            async startAsAnswerer() {
+                try {
+                    this.updateStatus('connecting', 'カメラ起動中...');
+
+                    // Initialize camera
+                    const stream = await this.webrtc.initCamera();
+                    this.elements.localVideo.srcObject = stream;
+
+                    // Show sections
+                    this.elements.roleSelection.classList.add('hidden');
+                    this.elements.videoSection.classList.remove('hidden');
+                    this.elements.answererSection.classList.remove('hidden');
+                    this.elements.controlsSection.classList.remove('hidden');
+
+                    this.updateStatus('waiting', 'オファーを貼り付けてください');
+                } catch (error) {
+                    this.showToast(error.message, 'error');
+                    this.updateStatus('disconnected', 'エラー');
+                }
+            }
+
+            async applyOffer() {
+                const offerSdp = this.elements.remoteOffer.value.trim();
+
+                if (!offerSdp) {
+                    this.showToast('オファーを入力してください', 'error');
+                    return;
+                }
+
+                if (!offerSdp.includes('v=0')) {
+                    this.showToast('無効なSDP形式です', 'error');
+                    return;
+                }
+
+                try {
+                    this.updateStatus('connecting', 'ICE候補収集中...');
+                    this.elements.localAnswer.value = '生成中...';
+                    this.elements.applyOffer.disabled = true;
+
+                    const answerSdp = await this.webrtc.handleOffer(offerSdp);
+                    this.elements.localAnswer.value = answerSdp;
+                    this.elements.copyAnswer.disabled = false;
+
+                    this.updateStatus('waiting', 'アンサーを相手に送信してください');
+                } catch (error) {
+                    console.error('Apply offer error:', error);
+                    this.showToast('オファーの適用に失敗しました', 'error');
+                    this.elements.applyOffer.disabled = false;
+                    this.updateStatus('disconnected', 'エラー');
+                }
+            }
+
+            async applyAnswer() {
+                const answerSdp = this.elements.remoteAnswer.value.trim();
+
+                if (!answerSdp) {
+                    this.showToast('アンサーを入力してください', 'error');
+                    return;
+                }
+
+                if (!answerSdp.includes('v=0')) {
+                    this.showToast('無効なSDP形式です', 'error');
+                    return;
+                }
+
+                try {
+                    this.updateStatus('connecting', '接続中...');
+                    this.elements.applyAnswer.disabled = true;
+
+                    await this.webrtc.handleAnswer(answerSdp);
+                    this.showToast('接続を確立しています...', 'success');
+                } catch (error) {
+                    console.error('Apply answer error:', error);
+                    this.showToast('アンサーの適用に失敗しました', 'error');
+                    this.elements.applyAnswer.disabled = false;
+                    this.updateStatus('disconnected', 'エラー');
+                }
+            }
+
+            handleToggleAudio() {
+                const isEnabled = this.webrtc.toggleAudio();
+                this.elements.toggleAudio.classList.toggle('active', isEnabled);
+                this.elements.micOn.classList.toggle('hidden', !isEnabled);
+                this.elements.micOff.classList.toggle('hidden', isEnabled);
+            }
+
+            handleToggleVideo() {
+                const isEnabled = this.webrtc.toggleVideo();
+                this.elements.toggleVideo.classList.toggle('active', isEnabled);
+                this.elements.videoOn.classList.toggle('hidden', !isEnabled);
+                this.elements.videoOff.classList.toggle('hidden', isEnabled);
+                this.elements.localVideo.style.opacity = isEnabled ? '1' : '0.3';
+            }
+
+            async handleSwitchCamera() {
+                try {
+                    const stream = await this.webrtc.switchCamera();
+                    if (stream) {
+                        this.elements.localVideo.srcObject = stream;
+                        this.showToast('カメラを切り替えました', 'success');
+                    }
+                } catch (error) {
+                    this.showToast(error.message, 'error');
+                }
+            }
+
+            handleDisconnect() {
+                this.webrtc.disconnect();
+
+                // Reset UI
+                this.elements.localVideo.srcObject = null;
+                this.elements.remoteVideo.srcObject = null;
+                this.elements.remotePlaceholder.classList.remove('hidden');
+
+                this.elements.videoSection.classList.add('hidden');
+                this.elements.offererSection.classList.add('hidden');
+                this.elements.answererSection.classList.add('hidden');
+                this.elements.controlsSection.classList.add('hidden');
+                this.elements.roleSelection.classList.remove('hidden');
+
+                // Reset form values
+                this.elements.localOffer.value = '';
+                this.elements.remoteAnswer.value = '';
+                this.elements.remoteOffer.value = '';
+                this.elements.localAnswer.value = '';
+
+                // Reset buttons
+                this.elements.copyOffer.disabled = true;
+                this.elements.copyAnswer.disabled = true;
+                this.elements.applyOffer.disabled = false;
+                this.elements.applyAnswer.disabled = false;
+
+                // Reset controls
+                this.elements.toggleAudio.classList.add('active');
+                this.elements.toggleVideo.classList.add('active');
+                this.elements.micOn.classList.remove('hidden');
+                this.elements.micOff.classList.add('hidden');
+                this.elements.videoOn.classList.remove('hidden');
+                this.elements.videoOff.classList.add('hidden');
+                this.elements.localVideo.style.opacity = '1';
+
+                this.updateStatus('disconnected', '切断しました');
+                setTimeout(() => this.updateStatus('none', '未接続'), 2000);
+            }
+
+            updateStatus(state, text) {
+                const statusMap = {
+                    'none': '',
+                    'connecting': 'connecting',
+                    'waiting': 'connecting',
+                    'connected': 'connected',
+                    'disconnected': 'disconnected',
+                    'failed': 'disconnected'
+                };
+
+                this.elements.statusDot.className = 'status-dot ' + (statusMap[state] || '');
+                if (text) {
+                    this.elements.statusText.textContent = text;
+                } else {
+                    const defaultTexts = {
+                        'connected': '接続完了',
+                        'disconnected': '切断されました',
+                        'failed': '接続失敗'
+                    };
+                    this.elements.statusText.textContent = defaultTexts[state] || state;
+                }
+            }
+
+            async copyToClipboard(text, successMessage) {
+                if (!text) {
+                    this.showToast('コピーするテキストがありません', 'error');
+                    return;
+                }
+
+                try {
+                    await navigator.clipboard.writeText(text);
+                    this.showToast(successMessage, 'success');
+                } catch (error) {
+                    // Fallback for older browsers
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    this.showToast(successMessage, 'success');
+                }
+            }
+
+            showToast(message, type = 'info') {
+                const existing = document.querySelector('.toast');
+                if (existing) existing.remove();
+
+                const toast = document.createElement('div');
+                toast.className = `toast ${type}`;
+                toast.textContent = message;
+                document.body.appendChild(toast);
+
+                setTimeout(() => toast.remove(), 3000);
+            }
+        }
+
+        // ========================================
+        // Initialize
+        // ========================================
+        document.addEventListener('DOMContentLoaded', () => {
+            // Check WebRTC support
+            if (!navigator.mediaDevices || !RTCPeerConnection) {
+                alert('このブラウザはWebRTCに対応していません。Chrome、Firefox、またはSafariをお使いください。');
+                return;
+            }
+
+            const webrtc = new ManualWebRTC();
+            const ui = new UIController(webrtc);
+
+            console.log('WebRTC Manual SDP Exchange initialized');
+        });
+    </script>
+</body>
+</html>
