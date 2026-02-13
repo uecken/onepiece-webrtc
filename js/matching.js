@@ -45,18 +45,35 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Check if this user is waiting in this island
             const isOwnWaiting = island.waitingUser === userId;
 
-            islandCard.innerHTML = `
-                <div class="island-image">
-                    <div class="island-icon">${getIslandEmoji(island.id)}</div>
-                </div>
-                <div class="island-info">
-                    <h3 class="island-name">${island.name}</h3>
-                    <p class="island-description">${island.description || ''}</p>
-                    <span class="status-badge ${getStatusClass(island.status)}">
-                        ${isOwnWaiting ? 'あなたが待機中' : getStatusText(island.status)}
-                    </span>
-                </div>
-            `;
+            // Create elements safely (XSS prevention)
+            const imageDiv = document.createElement('div');
+            imageDiv.className = 'island-image';
+            const iconDiv = document.createElement('div');
+            iconDiv.className = 'island-icon';
+            iconDiv.textContent = getIslandEmoji(island.id);
+            imageDiv.appendChild(iconDiv);
+
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'island-info';
+
+            const nameEl = document.createElement('h3');
+            nameEl.className = 'island-name';
+            nameEl.textContent = island.name;
+
+            const descEl = document.createElement('p');
+            descEl.className = 'island-description';
+            descEl.textContent = island.description || '';
+
+            const statusEl = document.createElement('span');
+            statusEl.className = `status-badge ${getStatusClass(island.status)}`;
+            statusEl.textContent = isOwnWaiting ? 'あなたが待機中' : getStatusText(island.status);
+
+            infoDiv.appendChild(nameEl);
+            infoDiv.appendChild(descEl);
+            infoDiv.appendChild(statusEl);
+
+            islandCard.appendChild(imageDiv);
+            islandCard.appendChild(infoDiv);
 
             // Add click handler
             if (!isOwnWaiting) {

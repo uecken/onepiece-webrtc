@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Islands: 誰でも読み取り可、書き込みは状態遷移のみ許可
+    match /islands/{islandId} {
+      allow read: if true;
+
+      // 書き込みは有効な状態遷移のみ
+      allow update: if
+        // empty -> waiting（入室）
+        (resource.data.status == 'empty' &&
+         request.resource.data.status == 'waiting' &&
+         request.resource.data.waitingUser != null) ||
+        // waiting -> empty（退出）
+        (resource.data.status == 'waiting' &&
+         request.resource.data.status == 'empty') ||
+        // waiting -> in_battle（対戦開始）
+        (resource.data.status == 'waiting' &&
+         request.resource.data.status == 'in_battle') ||
+        // in_battle -> empty（対戦終了）
+        (resource.data.status == 'in_battle' &&
+         request.resource.data.status == 'empty');
+
+      allow create: if false; // 島の作成は管理者のみ
+    }
+
+    // Battles: 作成可、更新は参加者のみ
+    match /battles/{battleId} {
+      allow read: if true;
+      allow create: if request.resource.data.creatorId != null &&
+                       request.resource.data.joinerId != null;
+      allow update: if resource.data.creatorId == request.resource.data.creatorId ||
+                       resource.data.joinerId == request.resource.data.joinerId;
+    }
+
+    // Signaling: シグナリングデータ
+    match /signaling/{battleId} {
+      allow read, write: if true;
+
+      match /iceCandidates/{candidateId} {
+        allow read, write: if true;
+      }
+    }
+  }
+}
