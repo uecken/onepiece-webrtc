@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>One Piece Card Battle - Island Selection</title>
+    <link rel="stylesheet" href="css/common.css">
+    <link rel="stylesheet" href="css/matching.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>One Piece Card Battle</h1>
+            <p class="subtitle">島を選んで対戦相手を探そう!</p>
+        </header>
+
+        <!-- Islands List -->
+        <main class="islands-container">
+            <div id="islands-list" class="islands-list">
+                <!-- Loading state -->
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <p>島を読み込み中...</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Waiting Modal -->
+        <div id="waiting-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="waiting-animation">
+                    <div class="spinner large"></div>
+                </div>
+                <h2>対戦相手を待っています...</h2>
+                <p id="waiting-island-name" class="island-name"></p>
+                <p class="waiting-hint">他のプレイヤーが島に入ると対戦が始まります</p>
+                <button id="cancel-waiting" class="btn danger">
+                    待機をキャンセル
+                </button>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="status-bar">
+                <span class="status-dot" id="status-dot"></span>
+                <span id="connection-status">接続中...</span>
+            </div>
+            <p class="user-id">ID: <span id="user-id-display"></span></p>
+        </footer>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <!-- Application Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/firebase-service.js"></script>
+    <script src="js/matching.js"></script>
+</body>
+</html>

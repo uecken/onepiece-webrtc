@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>One Piece Card Battle - Battle!</title>
+    <link rel="stylesheet" href="css/common.css">
+    <link rel="stylesheet" href="css/battle.css">
+</head>
+<body>
+    <div class="battle-container">
+        <!-- Opponent's Video (Top Half) -->
+        <div class="video-section opponent-section">
+            <video id="remote-video" autoplay playsinline></video>
+            <div class="video-overlay">
+                <span class="player-label">相手</span>
+            </div>
+            <div id="opponent-placeholder" class="placeholder">
+                <div class="spinner"></div>
+                <p>相手の映像を待機中...</p>
+            </div>
+        </div>
+
+        <!-- Status Bar (Middle) -->
+        <div class="battle-status">
+            <div id="connection-indicator" class="indicator connecting"></div>
+            <span id="battle-status-text">接続中...</span>
+        </div>
+
+        <!-- Your Video (Bottom Half) -->
+        <div class="video-section your-section">
+            <video id="local-video" autoplay playsinline muted></video>
+            <div class="video-overlay">
+                <span class="player-label">あなた</span>
+            </div>
+        </div>
+
+        <!-- Control Buttons -->
+        <div class="controls">
+            <button id="switch-camera" class="control-btn" title="カメラ切替">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"></path>
+                    <path d="M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="m18 22-3-3 3-3"></path>
+                    <path d="m6 2 3 3-3 3"></path>
+                </svg>
+            </button>
+            <button id="end-battle" class="control-btn danger" title="対戦終了">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 6 6 18"></path>
+                    <path d="m6 6 12 12"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Camera Permission Modal -->
+    <div id="camera-modal" class="modal">
+        <div class="modal-content">
+            <div class="camera-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path>
+                    <circle cx="12" cy="13" r="3"></circle>
+                </svg>
+            </div>
+            <h2>カメラへのアクセスが必要です</h2>
+            <p>対戦にはフロントカメラを使用します。<br>カードフィールドを映して対戦しましょう。</p>
+            <button id="request-camera" class="btn primary">
+                カメラを許可する
+            </button>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div id="error-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>エラー</h2>
+            <p id="error-message"></p>
+            <button id="error-back" class="btn primary">
+                島選択に戻る
+            </button>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <!-- Application Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/firebase-service.js"></script>
+    <script src="js/webrtc-service.js"></script>
+    <script src="js/battle.js"></script>
+</body>
+</html>
