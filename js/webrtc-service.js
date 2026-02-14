@@ -464,6 +464,9 @@ class WebRTCService {
         this.totalRecordedSize = 0;
         this.recordingStartTime = Date.now();
 
+        // Set isRecording early so drawFrame() loops can start
+        this.isRecording = true;
+
         let stream;
         switch (target) {
             case 'local':
@@ -487,6 +490,7 @@ class WebRTCService {
 
         if (!stream) {
             console.error('No stream available for recording:', target);
+            this.isRecording = false;  // Reset since we set it early
             return false;
         }
 
@@ -539,11 +543,12 @@ class WebRTCService {
             };
 
             this.mediaRecorder.start(RECORDING_CONFIG.chunkInterval);
-            this.isRecording = true;
-            console.log('Recording started:', target, 'Upload to Storage:', this.uploadToStorage);
+            console.log('Recording started:', target, 'viewMode:', viewMode, 'Upload to Storage:', this.uploadToStorage);
             return true;
         } catch (error) {
             console.error('Error starting recording:', error);
+            this.isRecording = false;  // Reset since we set it early
+            this.cleanupCombinedStream();
             return false;
         }
     }
@@ -661,10 +666,25 @@ class WebRTCService {
             this.animationFrameId = requestAnimationFrame(drawFrame);
         };
 
-        // Start drawing when video is ready
-        remoteVideoEl.onloadedmetadata = () => {
+        // Start drawing when video is ready (or immediately if already loaded)
+        const startDrawing = () => {
+            console.log('Starting transformed remote recording drawFrame loop (180° rotation)');
             drawFrame();
         };
+
+        // Check if video is already ready, otherwise wait
+        if (remoteVideoEl.readyState >= 2) {
+            startDrawing();
+        } else {
+            remoteVideoEl.onloadeddata = startDrawing;
+            // Fallback timeout
+            setTimeout(() => {
+                if (this.isRecording && !this.animationFrameId) {
+                    console.log('Fallback: starting drawFrame after timeout');
+                    startDrawing();
+                }
+            }, 100);
+        }
 
         // Create stream from canvas
         const canvasStream = this.combinedCanvas.captureStream(30);
@@ -740,13 +760,35 @@ class WebRTCService {
             this.animationFrameId = requestAnimationFrame(drawFrame);
         };
 
-        // Start drawing when videos are ready
-        Promise.all([
-            new Promise(r => localVideoEl.onloadedmetadata = r),
-            new Promise(r => remoteVideoEl.onloadedmetadata = r)
-        ]).then(() => {
+        // Start drawing when videos are ready (or immediately if already loaded)
+        const startDrawing = () => {
+            console.log('Starting combined recording drawFrame loop, spectator mode:', isSpectatorMode);
             drawFrame();
-        });
+        };
+
+        // Check if videos are already ready, otherwise wait for metadata
+        const checkReady = () => {
+            if (localVideoEl.readyState >= 2 && remoteVideoEl.readyState >= 2) {
+                startDrawing();
+            } else {
+                // Wait a bit and check again, or use events
+                const onReady = () => {
+                    if (localVideoEl.readyState >= 2 && remoteVideoEl.readyState >= 2) {
+                        startDrawing();
+                    }
+                };
+                localVideoEl.onloadeddata = onReady;
+                remoteVideoEl.onloadeddata = onReady;
+                // Also try after a short delay as fallback
+                setTimeout(() => {
+                    if (this.isRecording && !this.animationFrameId) {
+                        console.log('Fallback: starting drawFrame after timeout');
+                        startDrawing();
+                    }
+                }, 100);
+            }
+        };
+        checkReady();
 
         // Create stream from canvas
         const canvasStream = this.combinedCanvas.captureStream(30);
