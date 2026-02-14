@@ -28,6 +28,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const cameraList = document.getElementById('camera-list');
     const closeCameraModalBtn = document.getElementById('close-camera-modal');
 
+    // Recording and settings elements
+    const toggleRecordingBtn = document.getElementById('toggle-recording');
+    const recordIcon = document.getElementById('record-icon');
+    const stopRecordIcon = document.getElementById('stop-record-icon');
+    const openSettingsBtn = document.getElementById('open-settings');
+    const settingsModal = document.getElementById('settings-modal');
+    const closeSettingsBtn = document.getElementById('close-settings');
+    const viewModeRadios = document.querySelectorAll('input[name="view-mode"]');
+    const recordingTargetRadios = document.querySelectorAll('input[name="recording-target"]');
+    const battleContainer = document.querySelector('.battle-container');
+
     // Get battle parameters
     const params = getUrlParams();
     const battleId = params.get('battleId');
@@ -56,6 +67,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     let battle = null;
     let offerReceived = false;
     let answerReceived = false;
+
+    // View mode and recording state
+    let currentViewMode = localStorage.getItem('viewMode') || VIEW_MODE_CONFIG.default;
+    let currentRecordingTarget = localStorage.getItem('recordingTarget') || RECORDING_CONFIG.target;
+    let isRecording = false;
 
     /**
      * Update status display
@@ -363,6 +379,129 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    /**
+     * Apply view mode
+     */
+    function applyViewMode(mode) {
+        // Remove all mode classes
+        battleContainer.classList.remove('normal-mode', 'opponent-only-mode', 'spectator-mode');
+
+        // Add new mode class
+        battleContainer.classList.add(`${mode}-mode`);
+
+        // Save to localStorage
+        localStorage.setItem('viewMode', mode);
+        currentViewMode = mode;
+
+        console.log('View mode changed to:', mode);
+    }
+
+    /**
+     * Set recording target
+     */
+    function setRecordingTarget(target) {
+        localStorage.setItem('recordingTarget', target);
+        currentRecordingTarget = target;
+        console.log('Recording target set to:', target);
+    }
+
+    /**
+     * Toggle recording
+     */
+    async function toggleRecording() {
+        if (!isRecording) {
+            // Start recording
+            const success = webrtcService.startRecording(currentRecordingTarget);
+            if (success) {
+                isRecording = true;
+                updateRecordingButtonState(true);
+                addRecordingIndicator();
+            } else {
+                alert('録画を開始できませんでした。');
+            }
+        } else {
+            // Stop recording
+            try {
+                const { blob, target } = await webrtcService.stopRecording();
+                isRecording = false;
+                updateRecordingButtonState(false);
+                removeRecordingIndicator();
+
+                // Download recording
+                webrtcService.downloadRecording(blob, target);
+            } catch (error) {
+                console.error('Error stopping recording:', error);
+                isRecording = false;
+                updateRecordingButtonState(false);
+                removeRecordingIndicator();
+            }
+        }
+    }
+
+    /**
+     * Update recording button state
+     */
+    function updateRecordingButtonState(recording) {
+        if (recording) {
+            toggleRecordingBtn.classList.add('recording');
+            recordIcon.classList.add('hidden');
+            stopRecordIcon.classList.remove('hidden');
+        } else {
+            toggleRecordingBtn.classList.remove('recording');
+            recordIcon.classList.remove('hidden');
+            stopRecordIcon.classList.add('hidden');
+        }
+    }
+
+    /**
+     * Add recording indicator
+     */
+    function addRecordingIndicator() {
+        const indicator = document.createElement('div');
+        indicator.id = 'recording-indicator';
+        indicator.className = 'recording-indicator';
+        indicator.textContent = 'REC';
+        battleContainer.appendChild(indicator);
+    }
+
+    /**
+     * Remove recording indicator
+     */
+    function removeRecordingIndicator() {
+        const indicator = document.getElementById('recording-indicator');
+        if (indicator) {
+            indicator.remove();
+        }
+    }
+
+    /**
+     * Open settings modal
+     */
+    function openSettings() {
+        settingsModal.classList.remove('hidden');
+    }
+
+    /**
+     * Close settings modal
+     */
+    function closeSettings() {
+        settingsModal.classList.add('hidden');
+    }
+
+    /**
+     * Initialize settings
+     */
+    function initializeSettings() {
+        // Set initial view mode
+        applyViewMode(currentViewMode);
+        const viewModeRadio = document.querySelector(`input[name="view-mode"][value="${currentViewMode}"]`);
+        if (viewModeRadio) viewModeRadio.checked = true;
+
+        // Set initial recording target
+        const recordingTargetRadio = document.querySelector(`input[name="recording-target"][value="${currentRecordingTarget}"]`);
+        if (recordingTargetRadio) recordingTargetRadio.checked = true;
+    }
+
     // Event Listeners
     requestCameraBtn.addEventListener('click', async () => {
         const success = await initializeCamera();
@@ -381,10 +520,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     errorBackBtn.addEventListener('click', () => navigateToMatching());
     closeCameraModalBtn.addEventListener('click', () => cameraSelectModal.classList.add('hidden'));
 
+    // Recording and settings event listeners
+    toggleRecordingBtn.addEventListener('click', toggleRecording);
+    openSettingsBtn.addEventListener('click', openSettings);
+    closeSettingsBtn.addEventListener('click', closeSettings);
+
+    viewModeRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            applyViewMode(e.target.value);
+        });
+    });
+
+    recordingTargetRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            setRecordingTarget(e.target.value);
+        });
+    });
+
+    // Close settings modal when clicking outside
+    settingsModal.addEventListener('click', (e) => {
+        if (e.target === settingsModal) {
+            closeSettings();
+        }
+    });
+
     window.addEventListener('beforeunload', () => {
         webrtcService.disconnect();
         spreadsheetService.cleanup();
     });
+
+    // Initialize settings
+    initializeSettings();
 
     // Initialize
     try {

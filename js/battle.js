@@ -29,6 +29,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     const cameraList = document.getElementById('camera-list');
     const closeCameraModalBtn = document.getElementById('close-camera-modal');
 
+    // Settings and Recording elements
+    const battleContainer = document.querySelector('.battle-container');
+    const openSettingsBtn = document.getElementById('open-settings');
+    const settingsModal = document.getElementById('settings-modal');
+    const closeSettingsBtn = document.getElementById('close-settings');
+    const toggleRecordingBtn = document.getElementById('toggle-recording');
+    const downloadModal = document.getElementById('download-modal');
+    const downloadRecordingBtn = document.getElementById('download-recording');
+    const skipDownloadBtn = document.getElementById('skip-download');
+    const recordingStatusDiv = document.getElementById('recording-status');
+    const recordingTimeSpan = document.getElementById('recording-time');
+    const recordingSizeSpan = document.getElementById('recording-size');
+
+    // Debug: Check if buttons are found
+    console.log('Button elements found:', {
+        openSettingsBtn: !!openSettingsBtn,
+        toggleRecordingBtn: !!toggleRecordingBtn,
+        settingsModal: !!settingsModal
+    });
+
     // Get battle parameters from URL
     const params = getUrlParams();
     const battleId = params.get('battleId');
@@ -55,6 +75,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     let battle = null;
     let offerReceived = false;
     let answerReceived = false;
+
+    // Settings state
+    let currentViewMode = localStorage.getItem('viewMode') || VIEW_MODE_CONFIG.default;
+    let currentRecordTarget = localStorage.getItem('recordTarget') || RECORDING_CONFIG.target;
+    let currentStorageMode = localStorage.getItem('storageMode') || (RECORDING_CONFIG.uploadToStorage ? 'cloud' : 'memory');
+    let lastRecordingResult = null;
+    let recordingTimerInterval = null;
+    const storageModeWarning = document.getElementById('storage-mode-warning');
 
     /**
      * Update status display
@@ -382,23 +410,296 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Event Listeners
-    requestCameraBtn.addEventListener('click', async () => {
-        const success = await initializeCamera();
-        if (success) {
-            await initializeConnection();
-            // Initialize media button states
-            updateAudioButtonState(webrtcService.isAudioEnabled);
-            updateVideoButtonState(webrtcService.isVideoEnabled);
+    // ===== View Mode Functions =====
+
+    /**
+     * Apply view mode to battle container
+     * @param {string} mode - View mode ('normal', 'opponent-only', 'spectator')
+     */
+    function applyViewMode(mode) {
+        // Remove all view mode classes
+        battleContainer.classList.remove('view-normal', 'view-opponent-only', 'view-spectator');
+
+        // Apply new view mode class
+        if (mode !== 'normal') {
+            battleContainer.classList.add(`view-${mode}`);
         }
+
+        // Update settings modal buttons
+        document.querySelectorAll('[data-view-mode]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.viewMode === mode);
+        });
+
+        // Save to localStorage
+        currentViewMode = mode;
+        localStorage.setItem('viewMode', mode);
+        console.log('View mode changed to:', mode);
+    }
+
+    /**
+     * Set recording target
+     * @param {string} target - Recording target ('local', 'remote', 'combined')
+     */
+    function setRecordTarget(target) {
+        currentRecordTarget = target;
+        localStorage.setItem('recordTarget', target);
+
+        // Update settings modal buttons
+        document.querySelectorAll('[data-record-target]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.recordTarget === target);
+        });
+
+        console.log('Record target changed to:', target);
+    }
+
+    /**
+     * Set storage mode (cloud or memory)
+     * @param {string} mode - Storage mode ('cloud' or 'memory')
+     */
+    function setStorageMode(mode) {
+        currentStorageMode = mode;
+        localStorage.setItem('storageMode', mode);
+
+        // Update settings modal buttons
+        document.querySelectorAll('[data-storage-mode]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.storageMode === mode);
+        });
+
+        // Show/hide warning for memory mode
+        if (storageModeWarning) {
+            storageModeWarning.classList.toggle('hidden', mode !== 'memory');
+        }
+
+        console.log('Storage mode changed to:', mode);
+    }
+
+    // ===== Recording Functions =====
+
+    /**
+     * Format milliseconds to MM:SS
+     * @param {number} ms - Milliseconds
+     * @returns {string} Formatted time
+     */
+    function formatTime(ms) {
+        const totalSeconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    /**
+     * Format bytes to human readable
+     * @param {number} bytes - Bytes
+     * @returns {string} Formatted size
+     */
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+    }
+
+    /**
+     * Update recording progress display
+     * @param {number} elapsedMs - Elapsed time in ms
+     * @param {number} totalSize - Total recorded size in bytes
+     */
+    function onRecordingProgress(elapsedMs, totalSize) {
+        recordingTimeSpan.textContent = formatTime(elapsedMs);
+        recordingSizeSpan.textContent = formatSize(totalSize);
+    }
+
+    /**
+     * Start recording timer interval
+     */
+    function startRecordingTimer() {
+        recordingStatusDiv.classList.remove('hidden');
+        recordingTimerInterval = setInterval(() => {
+            const progress = webrtcService.getRecordingProgress();
+            if (progress.isRecording) {
+                onRecordingProgress(progress.duration, progress.size);
+            }
+        }, 1000);
+    }
+
+    /**
+     * Stop recording timer interval
+     */
+    function stopRecordingTimer() {
+        if (recordingTimerInterval) {
+            clearInterval(recordingTimerInterval);
+            recordingTimerInterval = null;
+        }
+        recordingStatusDiv.classList.add('hidden');
+    }
+
+    /**
+     * Toggle recording on/off
+     */
+    async function toggleRecording() {
+        console.log('toggleRecording called, isRecording:', webrtcService.isRecording);
+        if (webrtcService.isRecording) {
+            // Stop recording
+            toggleRecordingBtn.classList.remove('recording');
+            toggleRecordingBtn.disabled = true;
+
+            try {
+                lastRecordingResult = await webrtcService.stopRecording();
+                stopRecordingTimer();
+
+                // Show download modal if we have a recording
+                if (lastRecordingResult.uploadedToStorage || lastRecordingResult.blob) {
+                    downloadModal.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error stopping recording:', error);
+                alert('録画の停止に失敗しました。');
+            }
+
+            toggleRecordingBtn.disabled = false;
+        } else {
+            // Start recording with current view mode for proper transformations
+            const uploadToStorage = currentStorageMode === 'cloud';
+            const success = webrtcService.startRecording(
+                currentRecordTarget,
+                uploadToStorage ? firebaseService : null,
+                uploadToStorage ? battleId : null,
+                onRecordingProgress,
+                uploadToStorage,
+                currentViewMode  // Pass view mode for spectator rotation
+            );
+
+            if (success) {
+                toggleRecordingBtn.classList.add('recording');
+                startRecordingTimer();
+            } else {
+                alert('録画を開始できませんでした。\nカメラが接続されているか確認してください。');
+            }
+        }
+    }
+
+    /**
+     * Download the last recording
+     */
+    async function downloadLastRecording() {
+        if (!lastRecordingResult) return;
+
+        downloadRecordingBtn.disabled = true;
+        downloadRecordingBtn.textContent = 'ダウンロード中...';
+
+        try {
+            let blob = lastRecordingResult.blob;
+
+            // If uploaded to storage, download and merge chunks
+            if (lastRecordingResult.uploadedToStorage && !blob) {
+                blob = await firebaseService.downloadAndMergeRecording(battleId, lastRecordingResult.target);
+            }
+
+            if (blob) {
+                webrtcService.downloadRecording(blob, lastRecordingResult.target);
+            } else {
+                alert('録画ファイルが見つかりませんでした。');
+            }
+        } catch (error) {
+            console.error('Error downloading recording:', error);
+            alert('ダウンロードに失敗しました。');
+        }
+
+        downloadRecordingBtn.disabled = false;
+        downloadRecordingBtn.textContent = 'ダウンロード';
+        downloadModal.classList.add('hidden');
+        lastRecordingResult = null;
+    }
+
+    /**
+     * Initialize settings from localStorage
+     */
+    function initializeSettings() {
+        // Apply saved view mode
+        applyViewMode(currentViewMode);
+
+        // Apply saved record target
+        setRecordTarget(currentRecordTarget);
+
+        // Apply saved storage mode
+        setStorageMode(currentStorageMode);
+    }
+
+    // Helper function to add click/touch event for mobile compatibility
+    function addTapListener(element, handler) {
+        if (!element) {
+            console.warn('Element not found for tap listener');
+            return;
+        }
+
+        // Use simple onclick - works reliably on both desktop and mobile
+        // Modern browsers handle touch-to-click conversion well
+        element.onclick = function(e) {
+            console.log('Button clicked:', element.id || element.className);
+            handler(e);
+        };
+    }
+
+    // Event Listeners
+    if (requestCameraBtn) {
+        addTapListener(requestCameraBtn, async () => {
+            const success = await initializeCamera();
+            if (success) {
+                await initializeConnection();
+                // Initialize media button states
+                updateAudioButtonState(webrtcService.isAudioEnabled);
+                updateVideoButtonState(webrtcService.isVideoEnabled);
+            }
+        });
+    }
+
+    // Media control event listeners with null checks
+    if (toggleAudioBtn) addTapListener(toggleAudioBtn, toggleAudio);
+    if (toggleVideoBtn) addTapListener(toggleVideoBtn, toggleVideo);
+    if (switchCameraBtn) addTapListener(switchCameraBtn, switchCamera);
+    if (endBattleBtn) addTapListener(endBattleBtn, endBattle);
+    if (errorBackBtn) addTapListener(errorBackBtn, () => navigateToMatching());
+    if (closeCameraModalBtn) addTapListener(closeCameraModalBtn, () => cameraSelectModal.classList.add('hidden'));
+
+    // Settings modal events with null checks
+    if (openSettingsBtn) {
+        addTapListener(openSettingsBtn, () => {
+            console.log('Settings button clicked');
+            if (settingsModal) settingsModal.classList.remove('hidden');
+        });
+    }
+    if (closeSettingsBtn) {
+        addTapListener(closeSettingsBtn, () => settingsModal.classList.add('hidden'));
+    }
+
+    // View mode selection
+    document.querySelectorAll('[data-view-mode]').forEach(btn => {
+        addTapListener(btn, () => applyViewMode(btn.dataset.viewMode));
     });
 
-    toggleAudioBtn.addEventListener('click', toggleAudio);
-    toggleVideoBtn.addEventListener('click', toggleVideo);
-    switchCameraBtn.addEventListener('click', switchCamera);
-    endBattleBtn.addEventListener('click', endBattle);
-    errorBackBtn.addEventListener('click', () => navigateToMatching());
-    closeCameraModalBtn.addEventListener('click', () => cameraSelectModal.classList.add('hidden'));
+    // Record target selection
+    document.querySelectorAll('[data-record-target]').forEach(btn => {
+        addTapListener(btn, () => setRecordTarget(btn.dataset.recordTarget));
+    });
+
+    // Storage mode selection
+    document.querySelectorAll('[data-storage-mode]').forEach(btn => {
+        addTapListener(btn, () => setStorageMode(btn.dataset.storageMode));
+    });
+
+    // Recording events with null checks
+    if (toggleRecordingBtn) {
+        addTapListener(toggleRecordingBtn, toggleRecording);
+        console.log('Recording button listener attached');
+    } else {
+        console.error('toggleRecordingBtn not found!');
+    }
+    if (downloadRecordingBtn) addTapListener(downloadRecordingBtn, downloadLastRecording);
+    if (skipDownloadBtn) {
+        addTapListener(skipDownloadBtn, () => {
+            downloadModal.classList.add('hidden');
+            lastRecordingResult = null;
+        });
+    }
 
     // Handle page unload
     window.addEventListener('beforeunload', () => {
@@ -433,6 +734,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         updateStatus('connecting', 'カメラへのアクセスを許可してください');
+
+        // Initialize settings from localStorage
+        initializeSettings();
 
         // Subscribe to battle updates
         firebaseService.subscribeToBattle(battleId, (updatedBattle) => {

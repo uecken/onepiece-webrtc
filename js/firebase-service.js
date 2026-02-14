@@ -5,6 +5,7 @@
 class FirebaseService {
     constructor() {
         this.db = null;
+        this.storage = null;
         this.unsubscribers = [];
         this.initialized = false;
     }
@@ -22,8 +23,16 @@ class FirebaseService {
             }
 
             this.db = firebase.firestore();
+
+            // Initialize Storage only if SDK is available (battle.html includes it)
+            if (typeof firebase.storage === 'function') {
+                this.storage = firebase.storage();
+                console.log('Firebase initialized successfully (Firestore + Storage)');
+            } else {
+                this.storage = null;
+                console.log('Firebase initialized successfully (Firestore only)');
+            }
             this.initialized = true;
-            console.log('Firebase initialized successfully');
 
             // Initialize islands if they don't exist
             await this.initializeIslands();
@@ -407,5 +416,157 @@ class FirebaseService {
         });
         this.unsubscribers = [];
         console.log('Firebase subscriptions cleaned up');
+    }
+
+    // ===== Firebase Storage Methods for Recording =====
+
+    /**
+     * Upload a recording chunk to Firebase Storage
+     * @param {string} battleId - Battle ID
+     * @param {Blob} blob - Recording chunk blob
+     * @param {number} index - Chunk index
+     * @param {string} target - Recording target ('local', 'remote', 'combined')
+     * @returns {Promise<string>} Download URL
+     */
+    async uploadChunk(battleId, blob, index, target) {
+        if (!this.storage) {
+            throw new Error('Firebase Storage is not initialized');
+        }
+        const ext = getFileExtension(blob.type);
+        const paddedIndex = String(index).padStart(3, '0');
+        const path = `recordings/${battleId}/${target}_chunk_${paddedIndex}.${ext}`;
+        const ref = this.storage.ref(path);
+
+        try {
+            const snapshot = await ref.put(blob, {
+                contentType: blob.type
+            });
+            const downloadUrl = await snapshot.ref.getDownloadURL();
+            console.log(`Chunk ${index} uploaded:`, path);
+            return downloadUrl;
+        } catch (error) {
+            console.error('Error uploading chunk:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Save recording metadata
+     * @param {string} battleId - Battle ID
+     * @param {string} target - Recording target
+     * @param {Object} metadata - Metadata object
+     */
+    async saveRecordingMetadata(battleId, target, metadata) {
+        if (!this.storage) {
+            console.warn('Firebase Storage is not initialized, skipping metadata save');
+            return;
+        }
+        const path = `recordings/${battleId}/${target}_metadata.json`;
+        const ref = this.storage.ref(path);
+        const blob = new Blob([JSON.stringify(metadata)], { type: 'application/json' });
+
+        try {
+            await ref.put(blob);
+            console.log('Recording metadata saved');
+        } catch (error) {
+            console.error('Error saving metadata:', error);
+        }
+    }
+
+    /**
+     * Get all recording chunk URLs for a battle
+     * @param {string} battleId - Battle ID
+     * @param {string} target - Recording target
+     * @returns {Promise<Array<{url: string, name: string}>>} Array of chunk info
+     */
+    async getRecordingChunks(battleId, target) {
+        if (!this.storage) {
+            console.warn('Firebase Storage is not initialized');
+            return [];
+        }
+        const folderRef = this.storage.ref(`recordings/${battleId}`);
+
+        try {
+            const result = await folderRef.listAll();
+            const chunks = [];
+
+            for (const item of result.items) {
+                if (item.name.startsWith(`${target}_chunk_`)) {
+                    const url = await item.getDownloadURL();
+                    chunks.push({
+                        url,
+                        name: item.name,
+                        index: parseInt(item.name.match(/_chunk_(\d+)/)?.[1] || '0')
+                    });
+                }
+            }
+
+            // Sort by index
+            chunks.sort((a, b) => a.index - b.index);
+            console.log(`Found ${chunks.length} chunks for ${target}`);
+            return chunks;
+        } catch (error) {
+            console.error('Error getting recording chunks:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Download and merge all chunks into a single blob
+     * @param {string} battleId - Battle ID
+     * @param {string} target - Recording target
+     * @returns {Promise<Blob|null>} Merged recording blob
+     */
+    async downloadAndMergeRecording(battleId, target) {
+        const chunks = await this.getRecordingChunks(battleId, target);
+
+        if (chunks.length === 0) {
+            console.warn('No recording chunks found');
+            return null;
+        }
+
+        try {
+            const blobs = [];
+
+            for (const chunk of chunks) {
+                const response = await fetch(chunk.url);
+                const blob = await response.blob();
+                blobs.push(blob);
+            }
+
+            // Determine MIME type from first chunk
+            const mimeType = blobs[0].type || 'video/webm';
+            const mergedBlob = new Blob(blobs, { type: mimeType });
+            console.log(`Merged ${blobs.length} chunks, total size: ${(mergedBlob.size / 1024 / 1024).toFixed(2)} MB`);
+            return mergedBlob;
+        } catch (error) {
+            console.error('Error merging recording:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Delete all recording files for a battle
+     * @param {string} battleId - Battle ID
+     */
+    async deleteRecording(battleId) {
+        if (!this.storage) {
+            console.warn('Firebase Storage is not initialized');
+            return;
+        }
+        const folderRef = this.storage.ref(`recordings/${battleId}`);
+
+        try {
+            const result = await folderRef.listAll();
+
+            for (const item of result.items) {
+                await item.delete();
+                console.log('Deleted:', item.name);
+            }
+
+            console.log(`Recording for battle ${battleId} deleted`);
+        } catch (error) {
+            console.error('Error deleting recording:', error);
+        }
     }
 }

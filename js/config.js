@@ -36,3 +36,49 @@ const MEDIA_CONSTRAINTS = {
 
 // Legacy alias
 const VIDEO_CONSTRAINTS = MEDIA_CONSTRAINTS;
+
+// View Mode Configuration
+const VIEW_MODE_CONFIG = {
+    default: 'normal',  // 'normal' | 'opponent-only' | 'spectator'
+    modes: ['normal', 'opponent-only', 'spectator']
+};
+
+// Recording Configuration
+const RECORDING_CONFIG = {
+    target: 'local',           // 'local' | 'remote' | 'combined'
+    chunkInterval: 10000,      // 10秒ごとにチャンク生成
+    includeAudio: true,
+    uploadToStorage: true,     // true: Firebase Storage, false: メモリ蓄積
+    maxDurationMs: 60 * 60 * 1000,  // 最大録画時間: 1時間
+};
+
+/**
+ * Get supported MIME type for MediaRecorder
+ * iOS Safari: MP4/H264, Chrome/Firefox: WebM/VP9
+ * @returns {string} Supported MIME type
+ */
+function getSupportedMimeType() {
+    const types = [
+        'video/webm;codecs=vp9,opus',   // Chrome/Firefox (preferred)
+        'video/webm;codecs=vp8,opus',   // Older browsers
+        'video/webm',                    // Generic WebM
+        'video/mp4;codecs=h264,aac',    // iOS Safari
+        'video/mp4',                     // Generic MP4
+    ];
+    for (const type of types) {
+        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) {
+            return type;
+        }
+    }
+    return '';
+}
+
+/**
+ * Get file extension based on MIME type
+ * @param {string} mimeType - MIME type
+ * @returns {string} File extension
+ */
+function getFileExtension(mimeType) {
+    if (mimeType.includes('mp4')) return 'mp4';
+    return 'webm';
+}

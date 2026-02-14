@@ -16,6 +16,16 @@ class WebRTCService {
         this.isVideoEnabled = true;
         this.currentDeviceId = null;
         this.availableCameras = [];
+
+        // Recording state
+        this.mediaRecorder = null;
+        this.recordingChunks = [];
+        this.recordingTarget = 'local';
+        this.isRecording = false;
+        this.combinedStream = null;
+        this.combinedCanvas = null;
+        this.combinedContext = null;
+        this.animationFrameId = null;
     }
 
     /**
@@ -418,5 +428,216 @@ class WebRTCService {
         this.onConnectionStateChangeCallback = null;
 
         console.log('WebRTC service disconnected and cleaned up');
+    }
+
+    /**
+     * Start recording
+     * @param {string} target - Recording target: 'local', 'remote', or 'combined'
+     * @returns {boolean} Success
+     */
+    startRecording(target = RECORDING_CONFIG.target) {
+        if (this.isRecording) {
+            console.warn('Already recording');
+            return false;
+        }
+
+        this.recordingTarget = target;
+        let stream;
+
+        switch (target) {
+            case 'local':
+                stream = this.localStream;
+                break;
+            case 'remote':
+                stream = this.remoteStream;
+                break;
+            case 'combined':
+                stream = this.createCombinedStream();
+                break;
+            default:
+                console.error('Invalid recording target:', target);
+                return false;
+        }
+
+        if (!stream) {
+            console.error('No stream available for recording:', target);
+            return false;
+        }
+
+        try {
+            const mimeType = RECORDING_CONFIG.mimeType;
+            const options = MediaRecorder.isTypeSupported(mimeType)
+                ? { mimeType }
+                : { mimeType: 'video/webm' };
+
+            this.mediaRecorder = new MediaRecorder(stream, options);
+            this.recordingChunks = [];
+
+            this.mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    this.recordingChunks.push(event.data);
+                }
+            };
+
+            this.mediaRecorder.onerror = (event) => {
+                console.error('MediaRecorder error:', event.error);
+                this.stopRecording();
+            };
+
+            this.mediaRecorder.start(RECORDING_CONFIG.chunkInterval);
+            this.isRecording = true;
+            console.log('Recording started:', target);
+            return true;
+        } catch (error) {
+            console.error('Error starting recording:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Stop recording
+     * @returns {Promise<{blob: Blob, target: string}>} Recording data
+     */
+    stopRecording() {
+        return new Promise((resolve, reject) => {
+            if (!this.isRecording || !this.mediaRecorder) {
+                reject(new Error('Not recording'));
+                return;
+            }
+
+            this.mediaRecorder.onstop = () => {
+                const blob = new Blob(this.recordingChunks, { type: 'video/webm' });
+                const result = { blob, target: this.recordingTarget };
+
+                // Cleanup combined stream resources
+                if (this.recordingTarget === 'combined') {
+                    this.cleanupCombinedStream();
+                }
+
+                this.recordingChunks = [];
+                this.isRecording = false;
+                console.log('Recording stopped:', this.recordingTarget);
+                resolve(result);
+            };
+
+            this.mediaRecorder.stop();
+        });
+    }
+
+    /**
+     * Create combined stream from local and remote videos
+     * @returns {MediaStream} Combined media stream
+     */
+    createCombinedStream() {
+        if (!this.localStream || !this.remoteStream) {
+            console.error('Both streams required for combined recording');
+            return null;
+        }
+
+        // Create canvas for combining videos
+        this.combinedCanvas = document.createElement('canvas');
+        this.combinedCanvas.width = 640;
+        this.combinedCanvas.height = 960; // 480 * 2 for stacked videos
+        this.combinedContext = this.combinedCanvas.getContext('2d');
+
+        // Create video elements for drawing
+        const localVideoEl = document.createElement('video');
+        const remoteVideoEl = document.createElement('video');
+        localVideoEl.srcObject = this.localStream;
+        remoteVideoEl.srcObject = this.remoteStream;
+        localVideoEl.muted = true;
+        remoteVideoEl.muted = true;
+        localVideoEl.play();
+        remoteVideoEl.play();
+
+        // Draw frames to canvas
+        const drawFrame = () => {
+            if (!this.isRecording) return;
+
+            const ctx = this.combinedContext;
+            const width = this.combinedCanvas.width;
+            const height = this.combinedCanvas.height / 2;
+
+            // Draw remote video on top
+            ctx.drawImage(remoteVideoEl, 0, 0, width, height);
+
+            // Draw local video on bottom (mirrored)
+            ctx.save();
+            ctx.translate(width, height);
+            ctx.scale(-1, 1);
+            ctx.drawImage(localVideoEl, 0, 0, width, height);
+            ctx.restore();
+
+            this.animationFrameId = requestAnimationFrame(drawFrame);
+        };
+
+        // Start drawing when videos are ready
+        Promise.all([
+            new Promise(r => localVideoEl.onloadedmetadata = r),
+            new Promise(r => remoteVideoEl.onloadedmetadata = r)
+        ]).then(() => {
+            drawFrame();
+        });
+
+        // Create stream from canvas
+        const canvasStream = this.combinedCanvas.captureStream(30);
+
+        // Add audio tracks if available
+        if (RECORDING_CONFIG.includeAudio) {
+            const localAudio = this.localStream.getAudioTracks()[0];
+            const remoteAudio = this.remoteStream.getAudioTracks()[0];
+            if (localAudio) canvasStream.addTrack(localAudio.clone());
+            if (remoteAudio) canvasStream.addTrack(remoteAudio.clone());
+        }
+
+        this.combinedStream = canvasStream;
+        return canvasStream;
+    }
+
+    /**
+     * Cleanup combined stream resources
+     */
+    cleanupCombinedStream() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+        if (this.combinedStream) {
+            this.combinedStream.getTracks().forEach(track => track.stop());
+            this.combinedStream = null;
+        }
+        this.combinedCanvas = null;
+        this.combinedContext = null;
+    }
+
+    /**
+     * Download recording
+     * @param {Blob} blob - Recording blob
+     * @param {string} target - Recording target for filename
+     */
+    downloadRecording(blob, target) {
+        const timestamp = new Date().toISOString()
+            .replace(/[:.]/g, '')
+            .slice(0, 15);
+        const filename = `battle_${timestamp}_${target}.webm`;
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        console.log('Recording downloaded:', filename);
+    }
+
+    /**
+     * Check if recording is in progress
+     * @returns {boolean} Is recording
+     */
+    getRecordingState() {
+        return this.isRecording;
     }
 }

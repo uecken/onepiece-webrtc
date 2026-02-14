@@ -276,3 +276,146 @@
         bottom: max(24px, env(safe-area-inset-bottom));
     }
 }
+
+/* View Modes */
+
+/* Opponent Only Mode */
+.battle-container.opponent-only-mode .your-section {
+    display: none;
+}
+
+.battle-container.opponent-only-mode .opponent-section {
+    flex: 1;
+}
+
+/* Spectator Mode - 180 degree rotation for opponent */
+.battle-container.spectator-mode .opponent-section video {
+    transform: rotate(180deg);
+}
+
+/* Recording Button States */
+.control-btn.recording {
+    background: var(--primary-red);
+    color: white;
+    animation: pulse-recording 1s infinite;
+}
+
+.control-btn.recording svg {
+    stroke: white;
+}
+
+@keyframes pulse-recording {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(231, 76, 60, 0);
+    }
+}
+
+/* Recording Indicator */
+.recording-indicator {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(231, 76, 60, 0.9);
+    color: white;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 600;
+    z-index: 100;
+    animation: blink-recording 1s infinite;
+}
+
+.recording-indicator::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    background: white;
+    border-radius: 50%;
+}
+
+@keyframes blink-recording {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* Settings Modal */
+.settings-content {
+    max-width: 400px;
+    text-align: left;
+}
+
+.settings-section {
+    margin: 20px 0;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--bg-secondary);
+}
+
+.settings-section:last-of-type {
+    border-bottom: none;
+}
+
+.settings-section h3 {
+    font-size: 1rem;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+}
+
+.settings-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.settings-option {
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.settings-option:hover {
+    background: var(--bg-primary);
+}
+
+.settings-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+}
+
+.settings-option span {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.settings-option small {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.settings-option:has(input:checked) {
+    background: var(--ocean-blue);
+}
+
+.settings-option:has(input:checked) span,
+.settings-option:has(input:checked) small {
+    color: white;
+}
+
+#close-settings {
+    width: 100%;
+    margin-top: 16px;
+}

@@ -34,3 +34,18 @@ const MEDIA_CONSTRAINTS = {
 
 // Legacy alias
 const VIDEO_CONSTRAINTS = MEDIA_CONSTRAINTS;
+
+// View Mode Configuration
+const VIEW_MODE_CONFIG = {
+    default: 'normal',  // 'normal' | 'opponent-only' | 'spectator'
+    modes: ['normal', 'opponent-only', 'spectator']
+};
+
+// Recording Configuration
+const RECORDING_CONFIG = {
+    target: 'local',  // 'local' | 'remote' | 'combined'
+    format: 'webm',
+    mimeType: 'video/webm;codecs=vp9,opus',
+    includeAudio: true,
+    chunkInterval: 1000  // milliseconds
+};

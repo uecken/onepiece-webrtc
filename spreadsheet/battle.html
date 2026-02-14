@@ -80,6 +80,25 @@
                 </svg>
             </button>
 
+            <!-- Recording -->
+            <button id="toggle-recording" class="control-btn" title="録画開始/停止">
+                <svg id="record-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <circle cx="12" cy="12" r="4" fill="currentColor"></circle>
+                </svg>
+                <svg id="stop-record-icon" class="hidden" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="6" y="6" width="12" height="12" fill="currentColor"></rect>
+                </svg>
+            </button>
+
+            <!-- Settings -->
+            <button id="open-settings" class="control-btn" title="設定">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+            </button>
+
             <!-- End Battle -->
             <button id="end-battle" class="control-btn danger" title="対戦終了">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -87,6 +106,59 @@
                     <path d="m6 6 12 12"></path>
                 </svg>
             </button>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal hidden">
+            <div class="modal-content settings-content">
+                <h2>設定</h2>
+
+                <!-- View Mode -->
+                <div class="settings-section">
+                    <h3>表示モード</h3>
+                    <div class="settings-options">
+                        <label class="settings-option">
+                            <input type="radio" name="view-mode" value="normal" checked>
+                            <span>通常</span>
+                            <small>相手 + 自分（デフォルト）</small>
+                        </label>
+                        <label class="settings-option">
+                            <input type="radio" name="view-mode" value="opponent-only">
+                            <span>相手のみ</span>
+                            <small>相手の映像を全画面表示</small>
+                        </label>
+                        <label class="settings-option">
+                            <input type="radio" name="view-mode" value="spectator">
+                            <span>俯瞰モード</span>
+                            <small>相手を180度回転（観客視点）</small>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Recording Target -->
+                <div class="settings-section">
+                    <h3>録画対象</h3>
+                    <div class="settings-options">
+                        <label class="settings-option">
+                            <input type="radio" name="recording-target" value="local" checked>
+                            <span>自分</span>
+                            <small>自分のカメラ映像を録画</small>
+                        </label>
+                        <label class="settings-option">
+                            <input type="radio" name="recording-target" value="remote">
+                            <span>相手</span>
+                            <small>相手のカメラ映像を録画</small>
+                        </label>
+                        <label class="settings-option">
+                            <input type="radio" name="recording-target" value="combined">
+                            <span>両方（合成）</span>
+                            <small>両方の映像を合成して録画</small>
+                        </label>
+                    </div>
+                </div>
+
+                <button id="close-settings" class="btn primary">閉じる</button>
+            </div>
         </div>
 
         <!-- Camera Selection Modal -->
