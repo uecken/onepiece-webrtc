@@ -1,0 +1,1397 @@
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.bounty-wrap{max-width:400px;margin:0 auto;padding:10px;font-family:'Hiragino Sans',sans-serif;background:#fff}
+
+/* セクション */
+.bounty-section{background:#fff;padding:15px;margin-bottom:10px;border:2px solid #333}
+.bounty-title{font-size:14px;font-weight:bold;color:#333;margin-bottom:12px;text-align:center;border-bottom:2px solid #333;padding-bottom:8px}
+.bounty-input{width:100%;padding:12px;border:2px solid #333;background:#fff;color:#333;font-size:14px;margin-bottom:10px}
+.bounty-input:focus{border-color:#000;outline:none}
+.bounty-input::placeholder{color:#999}
+.bounty-btn{width:100%;padding:14px;font-size:14px;font-weight:bold;color:#fff;background:#333;border:none;cursor:pointer}
+.bounty-btn:hover{background:#555}
+.bounty-btn:disabled{background:#999;cursor:not-allowed}
+.bounty-btn.danger{background:#e74c3c}
+.bounty-btn.danger:hover{background:#c0392b}
+
+/* タブ */
+.tab-btns{display:flex;gap:5px;margin-bottom:15px}
+.tab-btn{flex:1;padding:10px;font-size:12px;font-weight:bold;border:2px solid #333;background:#fff;color:#333;cursor:pointer}
+.tab-btn.active{background:#333;color:#fff}
+
+/* ビデオ画面 */
+.video-section{display:none;position:relative;background:#000;min-height:70vh}
+.video-section.show{display:block}
+.video-section.ios-fullscreen{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100vw!important;height:100vh!important;min-height:100vh!important;z-index:2147483647!important}
+.video-section.ios-fullscreen .remote-video{height:100vh!important}
+.video-section.ios-fullscreen .local-video{bottom:10px!important}
+.remote-video{width:100%;height:70vh;object-fit:cover;background:#222}
+.local-video{position:absolute;bottom:10px;right:10px;width:120px;height:90px;object-fit:cover;border:2px solid #fff;border-radius:8px;background:#333;z-index:40}
+.local-video.hidden{display:none}
+
+/* ビデオコントロール（右上に縦並び） */
+.video-controls{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:5px;z-index:100}
+.ctrl-btn{width:40px;height:40px;border-radius:50%;border:none;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.95);color:#333;box-shadow:0 2px 8px rgba(0,0,0,0.3)}
+.ctrl-btn:active{transform:scale(0.95)}
+.ctrl-btn.danger{background:rgba(231,76,60,0.95);color:#fff}
+.ctrl-btn.active{background:#2ecc71;color:#fff}
+
+/* 接続状態 */
+.connection-status{position:absolute;top:10px;left:10px;padding:8px 12px;border-radius:20px;font-size:12px;font-weight:bold;color:#fff}
+.connection-status.connecting{background:#f39c12}
+.connection-status.connected{background:#2ecc71}
+.connection-status.disconnected{background:#e74c3c}
+
+/* タイマー表示（右上から左に移動） */
+.battle-timer{position:absolute;top:10px;right:60px;padding:8px 12px;border-radius:20px;font-size:14px;font-weight:bold;color:#fff;background:rgba(0,0,0,0.7);font-family:'Share Tech Mono',monospace}
+.battle-timer.warning{background:#e74c3c;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+
+/* 先攻/後攻表示 */
+.turn-badge{position:absolute;top:50px;left:10px;padding:8px 16px;border-radius:4px;font-size:14px;font-weight:bold;color:#fff}
+.turn-badge.first{background:#e74c3c}
+.turn-badge.second{background:#3498db}
+
+/* 準備画面オーバーレイ（タッチ可能、背景が見える） */
+.prep-overlay{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:80px;z-index:45;pointer-events:none}
+.prep-overlay.hidden{display:none}
+.prep-content{background:rgba(0,0,0,0.7);padding:20px 30px;border-radius:12px;text-align:center;pointer-events:auto}
+.prep-title{color:#ffd700;font-size:16px;font-weight:bold;margin-bottom:8px}
+.prep-timer{color:#fff;font-size:36px;font-weight:bold;font-family:'Share Tech Mono',monospace}
+.prep-turn{color:#fff;font-size:14px;margin-top:12px;padding:8px 16px;border-radius:6px}
+.prep-turn.first{background:#e74c3c}
+.prep-turn.second{background:#3498db}
+.prep-hint{color:#fff;font-size:11px;margin-top:10px;opacity:0.9;line-height:1.5}
+
+/* 終了警告オーバーレイ */
+.end-warning{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(231,76,60,0.9);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:60}
+.end-warning.hidden{display:none}
+.end-warning h2{color:#fff;font-size:24px;margin-bottom:10px}
+.end-warning p{color:#fff;font-size:18px}
+.end-warning .countdown{font-size:48px;font-weight:bold;color:#fff;font-family:'Share Tech Mono',monospace}
+
+/* 待機モーダル */
+.modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:100;align-items:center;justify-content:center}
+.modal.show{display:flex}
+.modal-content{background:#fff;padding:30px;text-align:center;max-width:300px;width:90%}
+.modal-content h2{font-size:16px;margin-bottom:15px}
+.modal-content p{font-size:13px;color:#666;margin-bottom:20px}
+
+/* スピナー */
+.spinner{width:40px;height:40px;border:4px solid #ddd;border-top-color:#333;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 15px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 通知 */
+.bounty-toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:12px 24px;font-weight:bold;z-index:9999;display:none;border-radius:4px}
+.bounty-toast.show{display:block;animation:fadeInOut 2.5s ease}
+@keyframes fadeInOut{0%,100%{opacity:0}10%,90%{opacity:1}}
+
+/* 島情報 */
+.island-info{background:#fff;padding:5px;margin-bottom:10px;text-align:center;font-size:13px;border:2px solid #333}
+.island-name{font-weight:bold;font-size:16px;color:#333}
+
+/* ヘッダー画像（画面横幅いっぱいに配置） */
+.header-image{width:100vw;position:relative;left:50%;transform:translateX(-50%);margin-bottom:5px;display:block}
+
+/* 島グリッド */
+.islands-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.island-card{background:#fff;border:2px solid #333;padding:12px 8px;text-align:center;cursor:pointer;transition:all 0.2s}
+.island-card:hover{background:#f5f5f5;transform:scale(1.02)}
+.island-card.selected{background:#333;color:#fff}
+.island-card .island-title{font-size:14px;font-weight:bold;margin-bottom:4px}
+.island-card .island-desc{font-size:10px;color:#666}
+.island-card.selected .island-desc{color:#ccc}
+.island-card .island-status{font-size:10px;color:#e74c3c;font-weight:bold;margin-top:4px}
+
+/* ボタン横並び */
+.btn-row{display:flex;gap:8px}
+.btn-row .bounty-btn{margin:0}
+.btn-row .btn-main{flex:7}
+.btn-row .btn-sub{flex:3;background:#999}
+.btn-row .btn-sub:hover{background:#777}
+
+/* 非表示 */
+.hidden{display:none!important}
+</style>
+
+<div class="bounty-wrap">
+<!-- ログイン画面ヘッダー画像 -->
+<img src="https://lbaph.ocnk.net/data/lbaph/product/purema00DAItoumeDAI2.png" class="header-image" id="loginHeaderImage" alt="ONLINE BOUNTY LEAGUE">
+
+<!-- ログイン画面 -->
+<div class="bounty-section" id="loginSection">
+<div class="bounty-title">ONLINE BOUNTY LEAGUE<br><span style="font-size:10px">- 戰場に出陣する -</span></div>
+<div class="tab-btns">
+<button class="tab-btn active" onclick="showTab('login')">LOGIN</button>
+<button class="tab-btn" onclick="showTab('register')">REGISTER</button>
+</div>
+<div id="loginTab">
+<input type="text" class="bounty-input" id="loginId" placeholder="USER ID">
+<input type="password" class="bounty-input" id="loginPw" placeholder="PASSWORD">
+<button class="bounty-btn" id="loginBtn" onclick="login()">LOGIN</button>
+</div>
+<div id="registerTab" style="display:none">
+<input type="text" class="bounty-input" id="regId" placeholder="USER ID（英数字）">
+<input type="password" class="bounty-input" id="regPw" placeholder="PASSWORD">
+<input type="text" class="bounty-input" id="regName" placeholder="DISPLAY NAME">
+<button class="bounty-btn" id="regBtn" onclick="register()">REGISTER</button>
+</div>
+</div>
+
+<!-- ヘッダー画像（枠外） -->
+<img src="https://lbaph.ocnk.net/data/lbaph/product/purema00DAItoumeDAI2.png" class="header-image hidden" id="headerImage" alt="BOUNTY LEAGUE">
+
+<!-- 島選択画面 -->
+<div class="bounty-section hidden" id="couponSection">
+<div class="island-info">
+<input type="text" class="bounty-input" id="couponInput" placeholder="コードを入力して出陣しろ" style="text-align:center;margin-bottom:0;font-size:10px;border:none;padding:6px">
+</div>
+<button class="bounty-btn" id="resumeBtn" style="display:none;background:#2ecc71;margin-bottom:10px" onclick="tryResumeBattle()">バトルに戻る</button>
+
+<!-- 4つの島 -->
+<div class="islands-grid" id="islandsGrid">
+<div class="island-card" id="island-HANNYA" onclick="selectIsland('HANNYA', this)">
+<div class="island-title">HANNYA</div>
+<div class="island-desc">般若で戦をする</div>
+<div class="island-status" id="status-HANNYA"></div>
+</div>
+<div class="island-card" id="island-PHOENIX" onclick="selectIsland('PHOENIX', this)">
+<div class="island-title">PHOENIX</div>
+<div class="island-desc">鳳凰で戦をする</div>
+<div class="island-status" id="status-PHOENIX"></div>
+</div>
+<div class="island-card" id="island-PAGODA" onclick="selectIsland('PAGODA', this)">
+<div class="island-title">PAGODA</div>
+<div class="island-desc">侍塔で戦をする</div>
+<div class="island-status" id="status-PAGODA"></div>
+</div>
+<div class="island-card" id="island-KABUTO" onclick="selectIsland('KABUTO', this)">
+<div class="island-title">KABUTO</div>
+<div class="island-desc">刀兜で戦をする</div>
+<div class="island-status" id="status-KABUTO"></div>
+</div>
+</div>
+
+<input type="hidden" id="couponCode" value="">
+<div class="btn-row">
+<button class="bounty-btn btn-main" onclick="enterIsland()">出陣</button>
+<button class="bounty-btn btn-sub" onclick="logout()">退陣</button>
+</div>
+</div>
+
+<!-- ビデオ通話画面 -->
+<div class="video-section" id="videoSection">
+<div class="connection-status connecting" id="connStatus">接続中...</div>
+<div class="battle-timer" id="battleTimer">30:00</div>
+<div class="turn-badge" id="turnBadge">先攻</div>
+<video id="remoteVideo" class="remote-video" autoplay playsinline></video>
+<video id="localVideo" class="local-video hidden" autoplay playsinline muted></video>
+
+<!-- 準備画面オーバーレイ -->
+<div class="prep-overlay" id="prepOverlay">
+<div class="prep-content">
+<div class="prep-title">対戦まであと</div>
+<div class="prep-timer" id="prepTimer">90</div>
+<div style="color:#ffd700;font-size:12px;margin-top:2px">秒</div>
+<div class="prep-turn" id="prepTurn">あなたは先攻です</div>
+<div class="prep-hint">カメラ調整・マリガンを<br>済ませて下さい</div>
+</div>
+</div>
+
+<!-- 終了警告オーバーレイ -->
+<div class="end-warning hidden" id="endWarning">
+<h2>⏰ 30分経過 - 戦闘終了</h2>
+<p>お別れの時間です</p>
+<div class="countdown" id="endCountdown">60</div>
+<p style="font-size:14px;margin-top:10px">秒後に自動退出</p>
+</div>
+
+<div class="video-controls">
+<button class="ctrl-btn primary" id="btnFullscreen" title="全画面">⛶</button>
+<button class="ctrl-btn primary" id="btnSwitchCamera" title="カメラ切替">🔄</button>
+<button class="ctrl-btn primary" id="btnToggleLocal" title="自分の映像">📷</button>
+<button class="ctrl-btn primary" id="btnMute" title="マイク">🎤</button>
+<button class="ctrl-btn danger" id="btnExit" title="退出">🚪</button>
+</div>
+</div>
+
+<!-- 待機モーダル -->
+<div class="modal" id="waitingModal">
+<div class="modal-content">
+<div class="spinner"></div>
+<h2>対戦相手を待ち...</h2>
+<p id="waitingIsland"></p>
+<p style="font-size:12px;color:#e74c3c;margin-top:10px">あなたが先攻になります</p>
+<button class="bounty-btn danger" style="margin-top:15px" onclick="cancelWaiting()">退出する</button>
+</div>
+</div>
+</div>
+
+<div class="bounty-toast" id="toast"></div>
+
+<script>
+// ===== 設定 =====
+var GAS_URL = 'https://script.google.com/macros/s/AKfycby4z8OF9_mAAFa4GjX9p1C-32Aa3ZRJk1S0rQ3mP8H3C_HnWymId12ZqhYBPLReY5cvfw/exec';
+var POLLING_INTERVAL = 3000;
+var STUN_SERVERS = [
+  {urls:'stun:stun.l.google.com:19302'},
+  {urls:'stun:stun1.l.google.com:19302'}
+];
+
+// ===== 状態管理 =====
+var currentUser = null;
+var currentIsland = null;
+var battleId = null;
+var isCreator = false;
+var peerConnection = null;
+var localStream = null;
+var remoteStream = null;
+var pollingTimer = null;
+var isMuted = false;
+var isLocalVideoVisible = false;
+var isFrontCamera = false; // 現在前面カメラか
+var isFullscreenMode = false; // iOS用フルスクリーン状態
+
+// タイマー関連
+var prepTimerInterval = null;
+var battleTimerInterval = null;
+var endTimerInterval = null;
+var battleTimeRemaining = 30 * 60; // 30分（秒）
+var prepTimeRemaining = 90; // 90秒
+var isFirstPlayer = false; // 先攻かどうか
+var battleStartTime = null; // 戦闘開始時刻（復帰用）
+
+// ===== ユーティリティ =====
+function showToast(msg){
+  var t=document.getElementById('toast');
+  t.textContent=msg;
+  t.classList.add('show');
+  setTimeout(function(){t.classList.remove('show')},2500);
+}
+
+function showTab(tab){
+  document.querySelectorAll('.tab-btn').forEach(function(b,i){
+    b.classList.toggle('active',(tab==='login'&&i===0)||(tab==='register'&&i===1));
+  });
+  document.getElementById('loginTab').style.display=tab==='login'?'block':'none';
+  document.getElementById('registerTab').style.display=tab==='register'?'block':'none';
+}
+
+function generateUserId(){
+  return 'user_'+Math.random().toString(36).substr(2,8);
+}
+
+// ===== API通信 =====
+function callAPI(params,callback){
+  var isGet = !params.action || ['getIsland','getSignaling','getIceCandidates'].includes(params.action);
+  var url = GAS_URL;
+  var options = {};
+
+  if(isGet || params._method==='GET'){
+    delete params._method;
+    url += '?' + Object.keys(params).map(function(k){return k+'='+encodeURIComponent(params[k])}).join('&');
+    options.method = 'GET';
+  } else {
+    options.method = 'POST';
+    options.headers = {'Content-Type':'text/plain'};
+    options.body = JSON.stringify(params);
+  }
+
+  fetch(url,options)
+    .then(function(r){return r.json()})
+    .then(callback)
+    .catch(function(e){showToast('通信エラー');console.error(e);});
+}
+
+// ===== 認証 =====
+function register(){
+  var id=document.getElementById('regId').value.trim().toLowerCase();
+  var pw=document.getElementById('regPw').value;
+  var name=document.getElementById('regName').value.trim();
+  if(!id||!pw||!name){showToast('全項目入力してください');return;}
+  if(!/^[a-z0-9]+$/.test(id)){showToast('IDは英数字のみ');return;}
+
+  document.getElementById('regBtn').disabled=true;
+  callAPI({action:'register',userId:id,password:pw,displayName:name},function(r){
+    document.getElementById('regBtn').disabled=false;
+    if(r.success){
+      showToast('登録完了！ログインしてください');
+      showTab('login');
+    }else{
+      showToast(r.message||'登録エラー');
+    }
+  });
+}
+
+function login(){
+  var id=document.getElementById('loginId').value.trim().toLowerCase();
+  var pw=document.getElementById('loginPw').value;
+  if(!id||!pw){showToast('ID・パスワードを入力');return;}
+
+  document.getElementById('loginBtn').disabled=true;
+  callAPI({action:'login',userId:id,password:pw},function(r){
+    document.getElementById('loginBtn').disabled=false;
+    if(r.success){
+      currentUser={id:id,name:r.displayName};
+      sessionStorage.setItem('bountyUser',JSON.stringify(currentUser));
+      showCouponSection();
+    }else{
+      showToast(r.message||'ログインエラー');
+    }
+  });
+}
+
+function logout(){
+  currentUser=null;
+  sessionStorage.removeItem('bountyUser');
+  document.getElementById('loginSection').classList.remove('hidden');
+  document.getElementById('loginHeaderImage').classList.remove('hidden');
+  document.getElementById('headerImage').classList.add('hidden');
+  document.getElementById('couponSection').classList.add('hidden');
+}
+
+function showCouponSection(){
+  document.getElementById('loginSection').classList.add('hidden');
+  document.getElementById('loginHeaderImage').classList.add('hidden');
+  document.getElementById('headerImage').classList.remove('hidden');
+  document.getElementById('couponSection').classList.remove('hidden');
+  document.getElementById('couponInput').placeholder='来たな、'+currentUser.name+'、コードを入力して出陣しろ';
+  // 島ステータスを取得
+  refreshIslandStatus();
+}
+
+// 島ステータスを更新
+function refreshIslandStatus(){
+  var islands = ['HANNYA','PHOENIX','PAGODA','KABUTO'];
+  islands.forEach(function(id){
+    callAPI({action:'getIsland',islandId:id,_method:'GET'},function(r){
+      var statusEl = document.getElementById('status-'+id);
+      if(r.island){
+        if(r.island.status === 'in_battle'){
+          statusEl.textContent = '戦中';
+        }else if(r.island.status === 'waiting'){
+          statusEl.textContent = '戦待ち';
+        }else{
+          statusEl.textContent = '';
+        }
+      }
+    });
+  });
+}
+
+// ===== 島選択 =====
+var selectedIslandId = null;
+
+function selectIsland(islandId, element){
+  // 全ての選択を解除
+  document.querySelectorAll('.island-card').forEach(function(card){
+    card.classList.remove('selected');
+  });
+  // 選択状態にする
+  element.classList.add('selected');
+  selectedIslandId = islandId;
+  document.getElementById('couponCode').value = islandId;
+}
+
+// ===== 島（クーポン）入室 =====
+function enterIsland(){
+  var entryCode = document.getElementById('couponInput').value.trim().toUpperCase();
+  var islandId = selectedIslandId;
+
+  // コードと島の両方が必要
+  if(!entryCode){showToast('コードを入力してください');return;}
+  if(!islandId){showToast('島を選択してください');return;}
+
+  // まずコードを検証
+  callAPI({action:'validateCode',code:entryCode,userId:currentUser.id,_method:'GET'},function(r){
+    if(!r.valid){
+      showToast(r.message || '無効なコードです');
+      return;
+    }
+
+    // コード有効 → 島の状態をチェック
+    callAPI({action:'getIsland',islandId:islandId,_method:'GET'},function(r2){
+      if(!r2.island){
+        showToast('島が見つかりません');
+        return;
+      }
+
+      currentIsland=r2.island;
+
+      // 状態に応じた処理
+      switch(r2.island.status){
+        case 'empty':
+          // 誰もいない→1人目として待機開始
+          startWaiting(islandId);
+          break;
+
+        case 'waiting':
+          if(r2.island.waitingUser === currentUser.id){
+            // 自分が待機中→再入室
+            startWaiting(islandId);
+          }else{
+            // 他の人が待機中→2人目として参加、バトル開始
+            joinBattle(islandId, r2.island.waitingUser);
+          }
+          break;
+
+        case 'in_battle':
+          // 対戦中→自分が参加者かチェック
+          checkAndRejoinBattle(r2.island.currentBattleId, islandId);
+          break;
+
+        default:
+          showToast('この島は現在使用できません');
+      }
+    });
+  });
+}
+
+// バトル中の島に自分が参加者かチェックして復帰
+function checkAndRejoinBattle(battleIdToCheck, islandId){
+  console.log('Checking battle:', battleIdToCheck, 'currentUser:', currentUser.id);
+
+  callAPI({action:'getBattle',battleId:battleIdToCheck,_method:'GET'},function(r){
+    console.log('getBattle response:', JSON.stringify(r));
+
+    if(r.battle && r.battle.status === 'active'){
+      console.log('Battle active. creatorId:', r.battle.creatorId, 'joinerId:', r.battle.joinerId, 'currentUser:', currentUser.id);
+
+      // 自分がこのバトルの参加者かチェック（文字列として比較）
+      var myId = String(currentUser.id).toLowerCase();
+      var creatorId = String(r.battle.creatorId || '').toLowerCase();
+      var joinerId = String(r.battle.joinerId || '').toLowerCase();
+
+      console.log('Comparing myId:', myId, 'creatorId:', creatorId, 'joinerId:', joinerId);
+
+      if(creatorId === myId || joinerId === myId){
+        // 参加者→復帰
+        battleId = battleIdToCheck;
+        currentIsland = {id: islandId};
+        isCreator = (creatorId === myId);
+        console.log('User is participant, isCreator:', isCreator);
+        showToast('バトルに復帰します...');
+        startVideoCall();
+      }else{
+        // 3人目→入れない
+        console.log('User is NOT a participant');
+        showToast('この島は戦中です');
+        refreshIslandStatus();
+      }
+    }else{
+      // バトルが終了しているまたはデータなし
+      console.log('Battle not active or not found:', r);
+      showToast('この島は戦中です');
+      refreshIslandStatus();
+    }
+  });
+}
+
+function startWaiting(islandId){
+  callAPI({action:'enterIsland',islandId:islandId,userId:currentUser.id},function(r){
+    if(r.success){
+      isCreator=true;
+      currentIsland={id:islandId};
+      document.getElementById('waitingIsland').textContent='島: '+islandId;
+      document.getElementById('waitingModal').classList.add('show');
+      startPolling();
+    }else{
+      showToast(r.message||'入室エラー');
+    }
+  });
+}
+
+function cancelWaiting(){
+  stopPolling();
+  if(currentIsland){
+    callAPI({action:'leaveIsland',islandId:currentIsland.id,userId:currentUser.id},function(){});
+  }
+  document.getElementById('waitingModal').classList.remove('show');
+  currentIsland=null;
+  isCreator=false;
+}
+
+function joinBattle(islandId,creatorId){
+  callAPI({action:'createBattle',islandId:islandId,creatorId:creatorId,joinerId:currentUser.id},function(r){
+    if(r.success){
+      battleId=r.battleId;
+      isCreator=false;
+      startVideoCall();
+    }else{
+      showToast(r.message||'バトル開始エラー');
+    }
+  });
+}
+
+// ===== ポーリング =====
+function startPolling(){
+  pollingTimer=setInterval(function(){
+    callAPI({action:'getIsland',islandId:currentIsland.id,_method:'GET'},function(r){
+      if(r.island && r.island.status==='in_battle' && r.island.currentBattleId){
+        stopPolling();
+        battleId=r.island.currentBattleId;
+        document.getElementById('waitingModal').classList.remove('show');
+        startVideoCall();
+      }
+    });
+  },POLLING_INTERVAL);
+}
+
+function stopPolling(){
+  if(pollingTimer){
+    clearInterval(pollingTimer);
+    pollingTimer=null;
+  }
+}
+
+// ===== WebRTC =====
+async function startVideoCall(){
+  document.getElementById('loginHeaderImage').classList.add('hidden');
+  document.getElementById('headerImage').classList.add('hidden');
+  document.getElementById('couponSection').classList.add('hidden');
+  document.getElementById('videoSection').classList.add('show');
+  document.getElementById('prepOverlay').classList.remove('hidden');
+  document.getElementById('endWarning').classList.add('hidden');
+  document.getElementById('resumeBtn').style.display = 'none';
+  updateConnectionStatus('connecting');
+
+  // 先攻/後攻を設定（先に待っていた人=Creator が先攻）
+  setTurnOrder(isCreator);
+
+  try{
+    // 背面カメラ・広角を取得（準備タイマーの前に）
+    localStream = await getBackCamera();
+    document.getElementById('localVideo').srcObject = localStream;
+
+    // 準備タイマー開始（カメラ取得後）
+    startPrepTimer();
+
+    // PeerConnection作成
+    createPeerConnection();
+
+    if(isCreator){
+      // Offer作成
+      var offer=await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      callAPI({action:'writeOffer',battleId:battleId,sdp:offer.sdp,userId:currentUser.id},function(){});
+      // Answer待ち
+      pollForAnswer();
+    }else{
+      // Offer待ち→Answer返す
+      pollForOffer();
+    }
+
+    // ICE候補ポーリング
+    pollForIceCandidates();
+
+  }catch(e){
+    showToast('カメラエラー: '+e.message);
+    console.error(e);
+  }
+}
+
+async function getBackCamera(){
+  console.log('カメラ取得開始...');
+
+  // まずカメラ権限を取得
+  try {
+    await navigator.mediaDevices.getUserMedia({video:true, audio:true});
+  } catch(e) {
+    console.log('初回権限取得:', e.message);
+  }
+
+  var devices = await navigator.mediaDevices.enumerateDevices();
+  var videoDevices = devices.filter(function(d){return d.kind==='videoinput'});
+  console.log('利用可能なカメラ:', videoDevices.length);
+  videoDevices.forEach(function(d,i){
+    console.log(i + ': ' + d.label);
+  });
+
+  // 広角カメラを優先（"wide"や"ultra"を含むものを探す）
+  var wideCamera = videoDevices.find(function(d){
+    var label = d.label.toLowerCase();
+    return label.includes('wide') || label.includes('ultra') || label.includes('広角');
+  });
+
+  // 試行順序: 広角 → 背面 → 任意
+  var attempts = [];
+
+  if(wideCamera){
+    attempts.push({
+      video: {deviceId:{exact:wideCamera.deviceId}, width:{ideal:1280}, height:{ideal:720}},
+      audio: true
+    });
+  }
+
+  attempts.push({
+    video: {facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720}},
+    audio: true
+  });
+
+  attempts.push({
+    video: {width:{ideal:1280}, height:{ideal:720}},
+    audio: true
+  });
+
+  attempts.push({
+    video: true,
+    audio: true
+  });
+
+  for(var i = 0; i < attempts.length; i++){
+    try {
+      console.log('カメラ取得試行 ' + (i+1) + ':', JSON.stringify(attempts[i].video));
+      var stream = await navigator.mediaDevices.getUserMedia(attempts[i]);
+      console.log('カメラ取得成功');
+      return stream;
+    } catch(e) {
+      console.log('カメラ取得失敗 ' + (i+1) + ':', e.message);
+    }
+  }
+
+  throw new Error('カメラを取得できませんでした');
+}
+
+function createPeerConnection(){
+  peerConnection=new RTCPeerConnection({iceServers:STUN_SERVERS});
+
+  localStream.getTracks().forEach(function(track){
+    peerConnection.addTrack(track,localStream);
+  });
+
+  peerConnection.ontrack=function(e){
+    console.log('Remote track received:', e.track.kind);
+    console.log('Remote streams:', e.streams.length);
+
+    if(e.streams && e.streams[0]){
+      remoteStream = e.streams[0];
+      var remoteVideo = document.getElementById('remoteVideo');
+      remoteVideo.srcObject = remoteStream;
+
+      // ビデオ再生を試行
+      remoteVideo.play().catch(function(err){
+        console.log('Auto-play blocked, user interaction needed:', err);
+      });
+
+      // トラック情報
+      var videoTracks = remoteStream.getVideoTracks();
+      var audioTracks = remoteStream.getAudioTracks();
+      console.log('Remote video tracks:', videoTracks.length);
+      console.log('Remote audio tracks:', audioTracks.length);
+    }
+  };
+
+  peerConnection.onicecandidate=function(e){
+    if(e.candidate){
+      callAPI({
+        action:'writeIceCandidate',
+        battleId:battleId,
+        candidate:e.candidate.candidate,
+        sdpMid:e.candidate.sdpMid,
+        sdpMLineIndex:e.candidate.sdpMLineIndex,
+        userId:currentUser.id
+      },function(){});
+    }
+  };
+
+  peerConnection.onconnectionstatechange=function(){
+    console.log('Connection state:',peerConnection.connectionState);
+    if(peerConnection.connectionState==='connected'){
+      updateConnectionStatus('connected');
+    }else if(peerConnection.connectionState==='disconnected'||peerConnection.connectionState==='failed'){
+      updateConnectionStatus('disconnected');
+    }
+  };
+}
+
+function pollForOffer(){
+  var timer=setInterval(function(){
+    callAPI({action:'getSignaling',battleId:battleId,_method:'GET'},async function(r){
+      if(r.offer && r.offer.sdp){
+        clearInterval(timer);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription({type:'offer',sdp:r.offer.sdp}));
+        var answer=await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        callAPI({action:'writeAnswer',battleId:battleId,sdp:answer.sdp,userId:currentUser.id},function(){});
+      }
+    });
+  },1000);
+}
+
+function pollForAnswer(){
+  var timer=setInterval(function(){
+    callAPI({action:'getSignaling',battleId:battleId,_method:'GET'},async function(r){
+      if(r.answer && r.answer.sdp){
+        clearInterval(timer);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription({type:'answer',sdp:r.answer.sdp}));
+      }
+    });
+  },1000);
+}
+
+function pollForIceCandidates(){
+  var processed=new Set();
+  setInterval(function(){
+    callAPI({action:'getIceCandidates',battleId:battleId,excludeUserId:currentUser.id,_method:'GET'},function(r){
+      if(r.candidates){
+        r.candidates.forEach(function(c){
+          var key=c.candidate+c.sdpMid;
+          if(!processed.has(key) && peerConnection && peerConnection.remoteDescription){
+            processed.add(key);
+            peerConnection.addIceCandidate(new RTCIceCandidate({
+              candidate:c.candidate,
+              sdpMid:c.sdpMid,
+              sdpMLineIndex:c.sdpMLineIndex
+            }));
+          }
+        });
+      }
+    });
+  },1000);
+}
+
+function updateConnectionStatus(status){
+  var el=document.getElementById('connStatus');
+  el.className='connection-status '+status;
+  if(status==='connecting')el.textContent='接続中...';
+  else if(status==='connected')el.textContent='接続済み';
+  else el.textContent='切断';
+}
+
+// ===== ビデオコントロール =====
+function toggleLocalVideo(){
+  isLocalVideoVisible=!isLocalVideoVisible;
+  document.getElementById('localVideo').classList.toggle('hidden',!isLocalVideoVisible);
+  document.getElementById('btnToggleLocal').classList.toggle('active',isLocalVideoVisible);
+}
+
+function toggleMute(){
+  if(localStream){
+    var audioTracks=localStream.getAudioTracks();
+    audioTracks.forEach(function(t){t.enabled=!t.enabled});
+    isMuted=!audioTracks[0].enabled;
+    document.getElementById('btnMute').textContent=isMuted?'🔇':'🎤';
+    document.getElementById('btnMute').classList.toggle('active',!isMuted);
+  }
+}
+
+// カメラ切り替え（背面↔前面）
+async function switchCamera(){
+  if(!localStream) return;
+
+  var newFacingMode = isFrontCamera ? 'environment' : 'user';
+
+  try {
+    // 現在のビデオトラックを停止
+    localStream.getVideoTracks().forEach(function(t){t.stop()});
+
+    // 新しいカメラでストリーム取得
+    var newStream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: newFacingMode, width:{ideal:1280}, height:{ideal:720}},
+      audio: false
+    });
+
+    var newVideoTrack = newStream.getVideoTracks()[0];
+
+    // ローカルストリームのビデオトラックを置き換え
+    var oldVideoTrack = localStream.getVideoTracks()[0];
+    if(oldVideoTrack){
+      localStream.removeTrack(oldVideoTrack);
+    }
+    localStream.addTrack(newVideoTrack);
+
+    // PeerConnectionのトラックも置き換え
+    if(peerConnection){
+      var senders = peerConnection.getSenders();
+      var videoSender = senders.find(function(s){return s.track && s.track.kind === 'video'});
+      if(videoSender){
+        await videoSender.replaceTrack(newVideoTrack);
+      }
+    }
+
+    // ローカルビデオ更新
+    document.getElementById('localVideo').srcObject = localStream;
+
+    isFrontCamera = !isFrontCamera;
+    document.getElementById('btnSwitchCamera').classList.toggle('active', isFrontCamera);
+    showToast(isFrontCamera ? '前面カメラ' : '背面カメラ');
+
+  } catch(e) {
+    console.error('カメラ切替エラー:', e);
+    showToast('カメラ切替に失敗');
+  }
+}
+
+// 退出確認（シンプルに直接退出）
+function confirmExit(){
+  showToast('退出します...');
+  setTimeout(function(){
+    exitBattle();
+  }, 500);
+}
+
+// 一時退出（セッションは保持）
+function exitBattle(){
+  stopPolling();
+  stopAllTimers();
+
+  if(localStream){
+    localStream.getTracks().forEach(function(t){t.stop()});
+    localStream=null;
+  }
+  if(peerConnection){
+    peerConnection.close();
+    peerConnection=null;
+  }
+
+  // フルスクリーン解除
+  var videoSection = document.getElementById('videoSection');
+  videoSection.classList.remove('ios-fullscreen');
+  isFullscreenMode = false;
+  if(document.fullscreenElement){
+    document.exitFullscreen();
+  }else if(document.webkitFullscreenElement){
+    document.webkitExitFullscreen();
+  }
+
+  // セッションは保持（時間内なら復帰可能）
+  // battleId, currentIsland, battleStartTime は維持
+
+  // UI リセット
+  videoSection.classList.remove('show');
+  document.getElementById('headerImage').classList.remove('hidden');
+  document.getElementById('couponSection').classList.remove('hidden');
+  document.getElementById('couponCode').value='';
+  document.getElementById('prepOverlay').classList.remove('hidden');
+  document.getElementById('endWarning').classList.add('hidden');
+  document.getElementById('battleTimer').classList.remove('warning');
+  document.getElementById('battleTimer').textContent = '30:00';
+  document.getElementById('localVideo').classList.add('hidden');
+  document.getElementById('btnToggleLocal').classList.remove('active');
+  document.getElementById('btnSwitchCamera').classList.remove('active');
+  document.getElementById('btnFullscreen').classList.remove('active');
+  isLocalVideoVisible = false;
+  isFrontCamera = false;
+
+  // 島選択をリセット
+  selectedIslandId = null;
+  document.querySelectorAll('.island-card').forEach(function(card){
+    card.classList.remove('selected');
+  });
+
+  // 復帰ボタンを表示（時間が残っていれば）
+  if(battleStartTime){
+    var elapsed = Date.now() - battleStartTime;
+    if(elapsed < 30 * 60 * 1000){
+      var remaining = Math.floor((30 * 60 * 1000 - elapsed) / 1000 / 60);
+      document.getElementById('resumeBtn').style.display = 'block';
+      document.getElementById('resumeBtn').textContent = 'バトルに戻る（残り約' + remaining + '分）';
+    }
+  }
+
+  showToast('一時退出しました');
+}
+
+function endCall(){
+  stopPolling();
+  stopAllTimers();
+
+  if(localStream){
+    localStream.getTracks().forEach(function(t){t.stop()});
+    localStream=null;
+  }
+  if(peerConnection){
+    peerConnection.close();
+    peerConnection=null;
+  }
+
+  if(battleId && currentIsland){
+    callAPI({action:'endBattle',battleId:battleId,islandId:currentIsland.id},function(){});
+  }
+
+  // フルスクリーン解除
+  var videoSection = document.getElementById('videoSection');
+  videoSection.classList.remove('ios-fullscreen');
+  isFullscreenMode = false;
+  if(document.fullscreenElement){
+    document.exitFullscreen();
+  }else if(document.webkitFullscreenElement){
+    document.webkitExitFullscreen();
+  }
+
+  // UI リセット
+  videoSection.classList.remove('show');
+  document.getElementById('headerImage').classList.remove('hidden');
+  document.getElementById('couponSection').classList.remove('hidden');
+  document.getElementById('couponCode').value='';
+  document.getElementById('prepOverlay').classList.remove('hidden');
+  document.getElementById('endWarning').classList.add('hidden');
+  document.getElementById('battleTimer').classList.remove('warning');
+  document.getElementById('battleTimer').textContent = '30:00';
+  document.getElementById('localVideo').classList.add('hidden');
+  document.getElementById('btnToggleLocal').classList.remove('active');
+  document.getElementById('btnSwitchCamera').classList.remove('active');
+  document.getElementById('btnFullscreen').classList.remove('active');
+  isLocalVideoVisible = false;
+  isFrontCamera = false;
+
+  // 島選択をリセット
+  selectedIslandId = null;
+  document.querySelectorAll('.island-card').forEach(function(card){
+    card.classList.remove('selected');
+  });
+
+  // 状態リセット
+  battleId=null;
+  currentIsland=null;
+  isCreator=false;
+  battleTimeRemaining = 30 * 60;
+  prepTimeRemaining = 90;
+
+  // セッションクリア
+  clearBattleSession();
+  document.getElementById('resumeBtn').style.display = 'none';
+
+  showToast('対戦終了');
+}
+
+// ===== フルスクリーン（iPhone対応） =====
+function toggleFullscreen(){
+  console.log('toggleFullscreen called');
+  var elem = document.getElementById('videoSection');
+
+  // iPhoneはFullscreen APIをサポートしないのでCSS対応
+  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  console.log('isIOS:', isIOS, 'isFullscreenMode:', isFullscreenMode);
+
+  if(isIOS){
+    // iOSはCSSで疑似フルスクリーン
+    isFullscreenMode = !isFullscreenMode;
+    elem.classList.toggle('ios-fullscreen', isFullscreenMode);
+    document.getElementById('btnFullscreen').classList.toggle('active', isFullscreenMode);
+    showToast(isFullscreenMode ? '全画面モード' : '通常モード');
+    console.log('iOS fullscreen toggled:', isFullscreenMode);
+  } else {
+    // 標準のFullscreen API（Androidやデスクトップ）
+    // まずCSS疑似フルスクリーンを試行
+    isFullscreenMode = !isFullscreenMode;
+    elem.classList.toggle('ios-fullscreen', isFullscreenMode);
+    document.getElementById('btnFullscreen').classList.toggle('active', isFullscreenMode);
+    showToast(isFullscreenMode ? '全画面モード' : '通常モード');
+    console.log('CSS fullscreen toggled:', isFullscreenMode);
+  }
+}
+
+// ダブルタップ用変数
+var lastTap = 0;
+var eventsInitialized = false;
+
+// イベントを設定する関数
+function setupVideoEvents(){
+  if(eventsInitialized) return;
+
+  var remoteVideo = document.getElementById('remoteVideo');
+  var videoSection = document.getElementById('videoSection');
+
+  if(!remoteVideo || !videoSection){
+    console.error('Video elements not found');
+    return;
+  }
+
+  console.log('Setting up video events');
+
+  // タッチイベント（スマホ）- ダブルタップで全画面
+  remoteVideo.addEventListener('touchend', function(e){
+    var currentTime = new Date().getTime();
+    var tapLength = currentTime - lastTap;
+    console.log('Touch detected, tapLength:', tapLength);
+    if(tapLength < 300 && tapLength > 0){
+      e.preventDefault();
+      console.log('Double tap detected!');
+      toggleFullscreen();
+    }
+    lastTap = currentTime;
+    tryPlayVideos();
+  }, {passive: false});
+
+  // ダブルクリック（PC）
+  remoteVideo.addEventListener('dblclick', function(e){
+    console.log('Double click detected!');
+    e.preventDefault();
+    toggleFullscreen();
+  });
+
+  // 画面タッチでビデオ再生を試行
+  videoSection.addEventListener('click', function(){
+    tryPlayVideos();
+  });
+
+  // ===== ボタンイベントハンドラー設定 =====
+  var btnFullscreen = document.getElementById('btnFullscreen');
+  var btnSwitchCamera = document.getElementById('btnSwitchCamera');
+  var btnToggleLocal = document.getElementById('btnToggleLocal');
+  var btnMute = document.getElementById('btnMute');
+  var btnExit = document.getElementById('btnExit');
+
+  // 全画面ボタン
+  if(btnFullscreen){
+    btnFullscreen.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('Fullscreen button clicked');
+      toggleFullscreen();
+    });
+    btnFullscreen.addEventListener('touchend', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('Fullscreen button touched');
+      toggleFullscreen();
+    }, {passive: false});
+  }
+
+  // カメラ切替ボタン
+  if(btnSwitchCamera){
+    btnSwitchCamera.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      switchCamera();
+    });
+    btnSwitchCamera.addEventListener('touchend', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      switchCamera();
+    }, {passive: false});
+  }
+
+  // 自分映像表示ボタン
+  if(btnToggleLocal){
+    btnToggleLocal.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      toggleLocalVideo();
+    });
+    btnToggleLocal.addEventListener('touchend', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      toggleLocalVideo();
+    }, {passive: false});
+  }
+
+  // ミュートボタン
+  if(btnMute){
+    btnMute.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      toggleMute();
+    });
+    btnMute.addEventListener('touchend', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      toggleMute();
+    }, {passive: false});
+  }
+
+  // 退出ボタン
+  if(btnExit){
+    btnExit.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('Exit button clicked');
+      confirmExit();
+    });
+    btnExit.addEventListener('touchend', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('Exit button touched');
+      confirmExit();
+    }, {passive: false});
+  }
+
+  // フルスクリーン変更イベント
+  document.addEventListener('fullscreenchange', function(){
+    var btn = document.getElementById('btnFullscreen');
+    if(btn){
+      btn.classList.toggle('active', !!document.fullscreenElement);
+    }
+  });
+  document.addEventListener('webkitfullscreenchange', function(){
+    var btn = document.getElementById('btnFullscreen');
+    if(btn){
+      btn.classList.toggle('active', !!document.webkitFullscreenElement);
+    }
+  });
+
+  eventsInitialized = true;
+  console.log('Video events setup complete');
+}
+
+function tryPlayVideos(){
+  var remoteVideo = document.getElementById('remoteVideo');
+  var localVideo = document.getElementById('localVideo');
+  if(remoteVideo.srcObject && remoteVideo.paused){
+    remoteVideo.play().catch(function(e){console.log('Remote play error:', e)});
+  }
+  if(localVideo.srcObject && localVideo.paused){
+    localVideo.play().catch(function(e){console.log('Local play error:', e)});
+  }
+}
+
+// ===== タイマー管理 =====
+function stopAllTimers(){
+  if(prepTimerInterval){clearInterval(prepTimerInterval);prepTimerInterval=null;}
+  if(battleTimerInterval){clearInterval(battleTimerInterval);battleTimerInterval=null;}
+  if(endTimerInterval){clearInterval(endTimerInterval);endTimerInterval=null;}
+}
+
+function startPrepTimer(){
+  prepTimeRemaining = 90;
+  updatePrepDisplay();
+
+  // 準備中も戦闘時と同じレイアウト（自分の映像を右下に小さく表示）
+  document.getElementById('localVideo').classList.remove('hidden');
+  isLocalVideoVisible = true;
+  document.getElementById('btnToggleLocal').classList.add('active');
+
+  prepTimerInterval = setInterval(function(){
+    prepTimeRemaining--;
+    updatePrepDisplay();
+
+    if(prepTimeRemaining <= 0){
+      clearInterval(prepTimerInterval);
+      prepTimerInterval = null;
+      document.getElementById('prepOverlay').classList.add('hidden');
+      startBattleTimer();
+    }
+  }, 1000);
+}
+
+function updatePrepDisplay(){
+  document.getElementById('prepTimer').textContent = prepTimeRemaining;
+}
+
+function startBattleTimer(){
+  // 戦闘開始時刻を記録（復帰用）
+  if(!battleStartTime){
+    battleStartTime = Date.now();
+    saveBattleSession();
+  }
+
+  battleTimeRemaining = 30 * 60; // 30分
+  updateBattleTimerDisplay();
+
+  battleTimerInterval = setInterval(function(){
+    battleTimeRemaining--;
+    updateBattleTimerDisplay();
+
+    // 残り60秒で警告
+    if(battleTimeRemaining === 60){
+      document.getElementById('battleTimer').classList.add('warning');
+      showEndWarning();
+    }
+
+    // 時間切れ
+    if(battleTimeRemaining <= 0){
+      clearInterval(battleTimerInterval);
+      battleTimerInterval = null;
+      forceEndCall();
+    }
+  }, 1000);
+}
+
+function updateBattleTimerDisplay(){
+  var mins = Math.floor(battleTimeRemaining / 60);
+  var secs = battleTimeRemaining % 60;
+  var display = String(mins).padStart(2,'0') + ':' + String(secs).padStart(2,'0');
+  document.getElementById('battleTimer').textContent = display;
+}
+
+function showEndWarning(){
+  document.getElementById('endWarning').classList.remove('hidden');
+  var endCountdown = 60;
+  document.getElementById('endCountdown').textContent = endCountdown;
+
+  endTimerInterval = setInterval(function(){
+    endCountdown--;
+    document.getElementById('endCountdown').textContent = endCountdown;
+
+    if(endCountdown <= 0){
+      clearInterval(endTimerInterval);
+      endTimerInterval = null;
+    }
+  }, 1000);
+}
+
+function forceEndCall(){
+  showToast('戦闘時間終了！');
+  endCall();
+}
+
+// ===== セッション保存・復帰 =====
+function saveBattleSession(){
+  var session = {
+    battleId: battleId,
+    islandId: currentIsland ? currentIsland.id : null,
+    isCreator: isCreator,
+    battleStartTime: battleStartTime
+  };
+  sessionStorage.setItem('bountyBattle', JSON.stringify(session));
+}
+
+function clearBattleSession(){
+  sessionStorage.removeItem('bountyBattle');
+  battleStartTime = null;
+}
+
+function tryResumeBattle(){
+  var saved = sessionStorage.getItem('bountyBattle');
+  if(!saved) return false;
+
+  var session = JSON.parse(saved);
+
+  // 30分経過していたら復帰不可
+  var elapsed = Date.now() - session.battleStartTime;
+  if(elapsed >= 30 * 60 * 1000){
+    clearBattleSession();
+    showToast('戦闘時間が終了しています');
+    return false;
+  }
+
+  // 復帰
+  battleId = session.battleId;
+  currentIsland = {id: session.islandId};
+  isCreator = session.isCreator;
+  battleStartTime = session.battleStartTime;
+
+  // 残り時間を計算
+  var remainingMs = (30 * 60 * 1000) - elapsed;
+  battleTimeRemaining = Math.floor(remainingMs / 1000);
+
+  showToast('バトルに復帰します...');
+  resumeVideoCall();
+  return true;
+}
+
+async function resumeVideoCall(){
+  document.getElementById('loginHeaderImage').classList.add('hidden');
+  document.getElementById('headerImage').classList.add('hidden');
+  document.getElementById('couponSection').classList.add('hidden');
+  document.getElementById('videoSection').classList.add('show');
+  document.getElementById('prepOverlay').classList.add('hidden'); // 準備画面スキップ
+  document.getElementById('endWarning').classList.add('hidden');
+  document.getElementById('resumeBtn').style.display = 'none';
+  updateConnectionStatus('connecting');
+
+  // 先攻/後攻を設定
+  setTurnOrder(isCreator);
+
+  // カメラ状態リセット
+  isFrontCamera = false;
+
+  try{
+    localStream = await getBackCamera();
+    document.getElementById('localVideo').srcObject = localStream;
+
+    // 自分の映像を表示
+    document.getElementById('localVideo').classList.remove('hidden');
+    isLocalVideoVisible = true;
+    document.getElementById('btnToggleLocal').classList.add('active');
+
+    createPeerConnection();
+
+    if(isCreator){
+      var offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      callAPI({action:'writeOffer',battleId:battleId,sdp:offer.sdp,userId:currentUser.id},function(){});
+      pollForAnswer();
+    }else{
+      pollForOffer();
+    }
+
+    pollForIceCandidates();
+
+    // 残り時間を計算してタイマー再開
+    var elapsed = Date.now() - battleStartTime;
+    var remainingMs = (30 * 60 * 1000) - elapsed;
+    battleTimeRemaining = Math.max(0, Math.floor(remainingMs / 1000));
+    updateBattleTimerDisplay();
+
+    // バトルタイマー開始（カウントダウン継続）
+    battleTimerInterval = setInterval(function(){
+      battleTimeRemaining--;
+      updateBattleTimerDisplay();
+
+      if(battleTimeRemaining === 60){
+        document.getElementById('battleTimer').classList.add('warning');
+        showEndWarning();
+      }
+
+      if(battleTimeRemaining <= 0){
+        clearInterval(battleTimerInterval);
+        battleTimerInterval = null;
+        forceEndCall();
+      }
+    }, 1000);
+
+  }catch(e){
+    showToast('カメラエラー: '+e.message);
+    console.error(e);
+  }
+}
+
+// ===== 先攻/後攻設定 =====
+function setTurnOrder(isFirst){
+  isFirstPlayer = isFirst;
+  var turnBadge = document.getElementById('turnBadge');
+  var prepTurn = document.getElementById('prepTurn');
+
+  if(isFirst){
+    turnBadge.textContent = '先攻';
+    turnBadge.className = 'turn-badge first';
+    prepTurn.textContent = 'あなたは先攻です';
+    prepTurn.className = 'prep-turn first';
+  }else{
+    turnBadge.textContent = '後攻';
+    turnBadge.className = 'turn-badge second';
+    prepTurn.textContent = 'あなたは後攻です';
+    prepTurn.className = 'prep-turn second';
+  }
+}
+
+// ===== 初期化 =====
+function initApp(){
+  console.log('App initializing...');
+
+  // ビデオ関連イベントを設定
+  setupVideoEvents();
+
+  var saved=sessionStorage.getItem('bountyUser');
+  if(saved){
+    currentUser=JSON.parse(saved);
+    showCouponSection();
+
+    // バトルセッションがあれば復帰ボタンを表示
+    var battleSession = sessionStorage.getItem('bountyBattle');
+    if(battleSession){
+      var session = JSON.parse(battleSession);
+      var elapsed = Date.now() - session.battleStartTime;
+      if(elapsed < 30 * 60 * 1000){
+        document.getElementById('resumeBtn').style.display = 'block';
+        var remaining = Math.floor((30 * 60 * 1000 - elapsed) / 1000 / 60);
+        document.getElementById('resumeBtn').textContent = 'バトルに戻る（残り約' + remaining + '分）';
+      }else{
+        sessionStorage.removeItem('bountyBattle');
+      }
+    }
+  }
+
+  console.log('App initialized');
+}
+
+// DOMContentLoadedで初期化
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', initApp);
+}else{
+  initApp();
+}
+</script>
