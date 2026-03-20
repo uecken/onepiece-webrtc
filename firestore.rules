@@ -7,7 +7,8 @@ service cloud.firestore {
     match /islands/{islandId} {
       allow read: if true;
       allow update: if true;
-      allow create: if false; // 島の作成は管理者のみ
+      // LBAPH_プレフィックスの島は動的作成を許可
+      allow create: if islandId.matches('LBAPH_.*');
     }
 
     // Battles: 誰でも作成・更新可（認証なしのため緩和）
