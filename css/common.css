@@ -199,6 +199,11 @@ body {
     background: var(--status-battle);
 }
 
+.indicator.waiting {
+    background: #3498db;
+    animation: pulse 2s infinite;
+}
+
 @keyframes pulse {
     0%, 100% {
         opacity: 1;

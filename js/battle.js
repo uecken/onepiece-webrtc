@@ -85,6 +85,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     let recordingTimerInterval = null;
     const storageModeWarning = document.getElementById('storage-mode-warning');
 
+    // Reconnection waiting state
+    let isWaitingForReconnect = false;
+    let reconnectUnsubscribe = null;
+
     /**
      * Update status display
      * @param {string} status - Status type
@@ -263,8 +267,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Handle disconnect
+     * @param {boolean} returnToMatching - If true, return to matching screen. If false, wait for reconnection.
      */
-    async function handleDisconnect() {
+    async function handleDisconnect(returnToMatching = false) {
         // Prevent double execution
         if (isDisconnecting) {
             console.log('Disconnect already in progress, skipping');
@@ -272,17 +277,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         isDisconnecting = true;
 
-        console.log('handleDisconnect called');
+        console.log('handleDisconnect called, returnToMatching:', returnToMatching);
 
         // Update status
         updateStatus('disconnected', '接続が切断されました');
 
+        const islandId = battle?.islandId;
+
         try {
             // 1. End battle and reset island FIRST (most important!)
             // This ensures the island is reset before any cleanup
-            if (battleId && battle && battle.islandId) {
-                console.log('Resetting island:', battle.islandId);
-                await firebaseService.endBattle(battleId, battle.islandId);
+            if (battleId && islandId) {
+                console.log('Resetting island:', islandId);
+                await firebaseService.endBattle(battleId, islandId);
             }
 
             // 2. Cleanup WebRTC
@@ -293,20 +300,122 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             console.error('Error during disconnect cleanup:', error);
             // Even if endBattle fails, try to force reset the island
-            if (battle && battle.islandId) {
+            if (islandId) {
                 try {
-                    await firebaseService.forceResetIsland(battle.islandId);
+                    await firebaseService.forceResetIsland(islandId);
                 } catch (e) {
                     console.error('Force reset also failed:', e);
                 }
             }
         }
 
-        // Return to matching screen after delay
-        updateStatus('disconnected', '島選択に戻ります...');
-        setTimeout(() => {
+        if (returnToMatching) {
+            // Return to matching screen after delay
+            updateStatus('disconnected', '島選択に戻ります...');
+            setTimeout(() => {
+                navigateToMatching();
+            }, 2000);
+        } else {
+            // Wait for reconnection
+            await waitForReconnection(islandId);
+        }
+    }
+
+    /**
+     * Wait for opponent to reconnect
+     * @param {string} islandId - Island ID to watch
+     */
+    async function waitForReconnection(islandId) {
+        if (!islandId) {
+            console.error('No island ID for reconnection waiting');
             navigateToMatching();
-        }, 2000);
+            return;
+        }
+
+        isWaitingForReconnect = true;
+        updateStatus('waiting', '相手の再接続を待機中...');
+        console.log('Waiting for reconnection on island:', islandId);
+
+        // Show waiting UI
+        if (opponentPlaceholder) {
+            opponentPlaceholder.innerHTML = `
+                <div style="text-align: center;">
+                    <p style="font-size: 1.2em; margin-bottom: 10px;">相手の再接続を待機中...</p>
+                    <p style="font-size: 0.9em; color: #888;">相手が島に再入室すると自動的に再接続します</p>
+                    <button id="cancel-wait-btn" style="margin-top: 20px; padding: 10px 20px; background: #666; color: white; border: none; border-radius: 5px; cursor: pointer;">島選択に戻る</button>
+                </div>
+            `;
+            opponentPlaceholder.classList.remove('hidden');
+
+            // Add cancel button handler
+            const cancelBtn = document.getElementById('cancel-wait-btn');
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', () => {
+                    cancelReconnectionWait();
+                });
+            }
+        }
+
+        // Subscribe to island changes
+        reconnectUnsubscribe = firebaseService.subscribeToIsland(islandId, async (island) => {
+            console.log('Island update while waiting:', island.status);
+
+            if (island.status === 'waiting' && island.waitingUser && island.waitingUser !== userId) {
+                // Someone entered the island - create battle as joiner
+                console.log('Opponent entered island, creating battle');
+                updateStatus('connecting', '再接続中...');
+
+                try {
+                    // Create new battle with waitingUser as creator, us as joiner
+                    const newBattleId = await firebaseService.createBattle(
+                        islandId,
+                        island.waitingUser,  // creator
+                        userId               // joiner
+                    );
+
+                    // Cleanup reconnect subscription
+                    cleanupReconnectionWait();
+
+                    // Navigate to new battle as joiner
+                    navigateToBattle(newBattleId, 'joiner');
+                } catch (error) {
+                    console.error('Failed to create reconnection battle:', error);
+                    updateStatus('error', '再接続に失敗しました');
+                    setTimeout(() => navigateToMatching(), 2000);
+                }
+            } else if (island.status === 'in_battle' && island.currentBattleId && island.currentBattleId !== battleId) {
+                // Someone else started a battle - join it
+                console.log('New battle detected:', island.currentBattleId);
+
+                // Check if we're part of this battle
+                const newBattle = await firebaseService.getBattle(island.currentBattleId);
+                if (newBattle && (newBattle.creatorId === userId || newBattle.joinerId === userId)) {
+                    cleanupReconnectionWait();
+                    const role = newBattle.creatorId === userId ? 'creator' : 'joiner';
+                    navigateToBattle(island.currentBattleId, role);
+                }
+            }
+        });
+    }
+
+    /**
+     * Cleanup reconnection wait state
+     */
+    function cleanupReconnectionWait() {
+        isWaitingForReconnect = false;
+        if (reconnectUnsubscribe) {
+            reconnectUnsubscribe();
+            reconnectUnsubscribe = null;
+        }
+    }
+
+    /**
+     * Cancel waiting and return to matching screen
+     */
+    function cancelReconnectionWait() {
+        console.log('Canceling reconnection wait');
+        cleanupReconnectionWait();
+        navigateToMatching();
     }
 
     /**
@@ -315,7 +424,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function endBattle() {
         if (confirm('対戦を終了しますか?')) {
             updateStatus('disconnected', '対戦を終了中...');
-            await handleDisconnect();
+            // When manually ending, return to matching screen (not wait)
+            await handleDisconnect(true);
         }
     }
 
