@@ -550,7 +550,7 @@ function showCouponSection(){
   document.getElementById('loginHeaderImage').classList.add('hidden');
   document.getElementById('headerImage').classList.remove('hidden');
   document.getElementById('couponSection').classList.remove('hidden');
-  document.getElementById('couponInput').placeholder='来たな、'+currentUser.name+'、コードを入力して出陣しろ';
+  document.getElementById('couponInput').placeholder='来たな、'+currentUser.name+'、コードを入力して出陣しろ（テスト: TEST）';
   // 島グリッドを非表示（コード入力のみに）
   document.getElementById('islandsGrid').classList.add('hidden');
 }
@@ -565,6 +565,10 @@ function selectIsland(islandId, element){
   document.getElementById('couponCode').value = islandId;
 }
 
+// ===== テスト用コード（開発時のみ有効）=====
+var TEST_CODES = ['TEST', 'DEMO', 'DEBUG'];
+var SKIP_CODE_VALIDATION = true; // true: テストモード（全コード許可）, false: GAS検証必須
+
 // ===== 島（コード）入室 =====
 async function enterIsland(){
   var entryCode = document.getElementById('couponInput').value.trim().toUpperCase();
@@ -572,6 +576,19 @@ async function enterIsland(){
   // コードのみ必要（島選択は不要）
   if(!entryCode){showToast('コードを入力してください');return;}
   if(entryCode.length < 3){showToast('コードは3文字以上で入力してください');return;}
+
+  // テストコードまたはスキップモードの場合は検証不要
+  var isTestCode = TEST_CODES.includes(entryCode);
+
+  if(!SKIP_CODE_VALIDATION && !isTestCode){
+    // GAS経由でコード検証
+    showToast('コードを確認中...');
+    var isValid = await validateCodeAsync(entryCode);
+    if(!isValid){
+      showToast('無効なコードです');
+      return;
+    }
+  }
 
   // コード=島ID（プレフィックス追加で他システムと衝突防止）
   var islandId = 'LBAPH_' + entryCode;
@@ -603,6 +620,15 @@ async function enterIsland(){
     console.error('Error entering island:', e);
     showToast('エラーが発生しました');
   }
+}
+
+// GASコード検証（Promise版）
+function validateCodeAsync(code){
+  return new Promise(function(resolve){
+    callAPI({action:'validateCode', code:code, userId:currentUser.id, _method:'GET'}, function(r){
+      resolve(r && r.valid === true);
+    });
+  });
 }
 
 // バトル中の島に自分が参加者かチェックして復帰（Firebase版）
