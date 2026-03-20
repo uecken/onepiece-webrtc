@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>ONLINE BOUNTY LEAGUE - Test</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+        .test-banner {
+            background: #e74c3c;
+            color: white;
+            text-align: center;
+            padding: 10px;
+            font-size: 12px;
+            font-weight: bold;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 9999;
+        }
+        .test-info {
+            background: #333;
+            color: #fff;
+            padding: 8px;
+            font-size: 11px;
+            text-align: center;
+        }
+        .app-frame {
+            margin-top: 60px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-banner">
+        TEST MODE - コード: TEST, DEMO, DEBUG
+    </div>
+    <div class="test-info">
+        同じコードを2つのブラウザで入力してマッチングテスト
+    </div>
+
+    <div class="app-frame">
+        <!-- header.html の内容をここに直接埋め込み -->
+    </div>
+
+    <!-- Firebase SDK (header.htmlより先に読み込む) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <script>
+        // header.html を読み込んで実行
+        fetch('header.html')
+            .then(r => r.text())
+            .then(html => {
+                // Firebase SDK scriptタグを除去（既に読み込み済み）
+                html = html.replace(/<script src="https:\/\/www\.gstatic\.com\/firebasejs[^<]*<\/script>/g, '');
+
+                // DOMに挿入
+                document.querySelector('.app-frame').innerHTML = html;
+
+                // scriptタグを抽出して実行
+                const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
+                if (scriptMatch && scriptMatch[1]) {
+                    const script = document.createElement('script');
+                    script.textContent = scriptMatch[1];
+                    document.body.appendChild(script);
+                }
+            })
+            .catch(err => {
+                console.error('Load error:', err);
+                document.querySelector('.app-frame').innerHTML =
+                    '<p style="color:red;text-align:center;padding:40px;">読み込みエラー: ' + err.message + '</p>';
+            });
+    </script>
+</body>
+</html>
