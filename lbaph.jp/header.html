@@ -1,3 +1,7 @@
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -231,13 +235,27 @@
 <div class="bounty-toast" id="toast"></div>
 
 <script>
-// ===== 設定 =====
-var GAS_URL = 'https://script.google.com/macros/s/AKfycby4z8OF9_mAAFa4GjX9p1C-32Aa3ZRJk1S0rQ3mP8H3C_HnWymId12ZqhYBPLReY5cvfw/exec';
-var POLLING_INTERVAL = 3000;
-var STUN_SERVERS = [
+// ===== Firebase設定 =====
+var firebaseConfig = {
+  apiKey: "AIzaSyDo4lHXDtFc1eaG-RJiGj0q5PioTzYpMWE",
+  authDomain: "onepiece-web-a1c05.firebaseapp.com",
+  projectId: "onepiece-web-a1c05",
+  storageBucket: "onepiece-web-a1c05.firebasestorage.app",
+  messagingSenderId: "977136307911",
+  appId: "1:977136307911:web:5a1989e8b6373bf7d4f8e2"
+};
+firebase.initializeApp(firebaseConfig);
+var db = firebase.firestore();
+
+// ===== ICE Servers (STUN + TURN) =====
+var ICE_SERVERS = [
   {urls:'stun:stun.l.google.com:19302'},
-  {urls:'stun:stun1.l.google.com:19302'}
+  {urls:'stun:stun1.l.google.com:19302'},
+  {urls:'turn:openrelay.metered.ca:80',username:'openrelayproject',credential:'openrelayproject'},
+  {urls:'turn:openrelay.metered.ca:443',username:'openrelayproject',credential:'openrelayproject'},
+  {urls:'turn:openrelay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'}
 ];
+var STUN_SERVERS = ICE_SERVERS; // 互換性のため
 
 // ===== 状態管理 =====
 var currentUser = null;
@@ -247,11 +265,15 @@ var isCreator = false;
 var peerConnection = null;
 var localStream = null;
 var remoteStream = null;
-var pollingTimer = null;
 var isMuted = false;
 var isLocalVideoVisible = false;
 var isFrontCamera = false; // 現在前面カメラか
 var isFullscreenMode = false; // iOS用フルスクリーン状態
+
+// Firebase subscriptions
+var islandUnsubscribe = null;
+var signalingUnsubscribe = null;
+var iceCandidatesUnsubscribe = null;
 
 // タイマー関連
 var prepTimerInterval = null;
@@ -282,7 +304,179 @@ function generateUserId(){
   return 'user_'+Math.random().toString(36).substr(2,8);
 }
 
-// ===== API通信 =====
+// ===== Firebase操作 =====
+function generateBattleId(){
+  return 'battle_' + Date.now() + '_' + Math.random().toString(36).substr(2,6);
+}
+
+// 島のステータスを取得
+async function getIsland(islandId){
+  var doc = await db.collection('islands').doc(islandId).get();
+  if(doc.exists){
+    return {id: doc.id, ...doc.data()};
+  }
+  return null;
+}
+
+// 島に入室（待機開始）
+async function enterIslandFirebase(islandId, userId){
+  await db.collection('islands').doc(islandId).set({
+    status: 'waiting',
+    waitingUser: userId,
+    users: [userId],
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, {merge: true});
+  console.log('Entered island:', islandId);
+}
+
+// 島から退出
+async function leaveIslandFirebase(islandId, userId){
+  var doc = await db.collection('islands').doc(islandId).get();
+  if(doc.exists && doc.data().waitingUser === userId){
+    await db.collection('islands').doc(islandId).update({
+      status: 'empty',
+      waitingUser: null,
+      users: []
+    });
+    console.log('Left island:', islandId);
+  }
+}
+
+// バトル作成
+async function createBattleFirebase(islandId, creatorId, joinerId){
+  var newBattleId = generateBattleId();
+
+  await db.collection('battles').doc(newBattleId).set({
+    islandId: islandId,
+    creatorId: creatorId,
+    joinerId: joinerId,
+    status: 'connecting',
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+
+  await db.collection('islands').doc(islandId).update({
+    status: 'in_battle',
+    users: [creatorId, joinerId],
+    currentBattleId: newBattleId
+  });
+
+  console.log('Battle created:', newBattleId);
+  return newBattleId;
+}
+
+// 島の変更を監視
+function subscribeToIsland(islandId, callback){
+  return db.collection('islands').doc(islandId).onSnapshot(function(doc){
+    if(doc.exists){
+      callback({id: doc.id, ...doc.data()});
+    }
+  });
+}
+
+// SDP Offer書き込み
+async function writeOfferFirebase(battleId, sdp, userId){
+  await db.collection('signaling').doc(battleId).set({
+    offer: {
+      sdp: sdp,
+      type: 'offer',
+      fromUserId: userId,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }
+  }, {merge: true});
+  console.log('Offer written');
+}
+
+// SDP Answer書き込み
+async function writeAnswerFirebase(battleId, sdp, userId){
+  await db.collection('signaling').doc(battleId).set({
+    answer: {
+      sdp: sdp,
+      type: 'answer',
+      fromUserId: userId,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }
+  }, {merge: true});
+  console.log('Answer written');
+}
+
+// Offer監視
+function subscribeToOffer(battleId, callback){
+  return db.collection('signaling').doc(battleId).onSnapshot(function(doc){
+    if(doc.exists && doc.data().offer){
+      callback(doc.data().offer);
+    }
+  });
+}
+
+// Answer監視
+function subscribeToAnswer(battleId, callback){
+  return db.collection('signaling').doc(battleId).onSnapshot(function(doc){
+    if(doc.exists && doc.data().answer){
+      callback(doc.data().answer);
+    }
+  });
+}
+
+// ICE Candidate書き込み
+async function writeIceCandidateFirebase(battleId, candidate, userId){
+  await db.collection('signaling').doc(battleId)
+    .collection('iceCandidates').add({
+      candidate: candidate.candidate,
+      sdpMid: candidate.sdpMid,
+      sdpMLineIndex: candidate.sdpMLineIndex,
+      fromUserId: userId,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+}
+
+// ICE Candidates監視
+function subscribeToIceCandidates(battleId, excludeUserId, callback){
+  return db.collection('signaling').doc(battleId)
+    .collection('iceCandidates')
+    .where('fromUserId', '!=', excludeUserId)
+    .onSnapshot(function(snapshot){
+      snapshot.docChanges().forEach(function(change){
+        if(change.type === 'added'){
+          var data = change.doc.data();
+          callback({
+            candidate: data.candidate,
+            sdpMid: data.sdpMid,
+            sdpMLineIndex: data.sdpMLineIndex
+          });
+        }
+      });
+    });
+}
+
+// バトル終了
+async function endBattleFirebase(battleId, islandId){
+  try {
+    await db.collection('battles').doc(battleId).update({
+      status: 'ended',
+      endedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await db.collection('islands').doc(islandId).update({
+      status: 'empty',
+      waitingUser: null,
+      users: [],
+      currentBattleId: null
+    });
+    console.log('Battle ended:', battleId);
+  } catch(e) {
+    console.error('Error ending battle:', e);
+  }
+}
+
+// Subscriptionクリーンアップ
+function cleanupSubscriptions(){
+  if(islandUnsubscribe){ islandUnsubscribe(); islandUnsubscribe = null; }
+  if(signalingUnsubscribe){ signalingUnsubscribe(); signalingUnsubscribe = null; }
+  if(iceCandidatesUnsubscribe){ iceCandidatesUnsubscribe(); iceCandidatesUnsubscribe = null; }
+}
+
+// ===== GAS API通信（認証のみ）=====
+var GAS_URL = 'https://script.google.com/macros/s/AKfycby4z8OF9_mAAFa4GjX9p1C-32Aa3ZRJk1S0rQ3mP8H3C_HnWymId12ZqhYBPLReY5cvfw/exec';
+
 function callAPI(params,callback){
   var isGet = !params.action || ['getIsland','getSignaling','getIceCandidates'].includes(params.action);
   var url = GAS_URL;
@@ -357,191 +551,153 @@ function showCouponSection(){
   document.getElementById('headerImage').classList.remove('hidden');
   document.getElementById('couponSection').classList.remove('hidden');
   document.getElementById('couponInput').placeholder='来たな、'+currentUser.name+'、コードを入力して出陣しろ';
-  // 島ステータスを取得
-  refreshIslandStatus();
+  // 島グリッドを非表示（コード入力のみに）
+  document.getElementById('islandsGrid').classList.add('hidden');
 }
 
-// 島ステータスを更新
-function refreshIslandStatus(){
-  var islands = ['HANNYA','PHOENIX','PAGODA','KABUTO'];
-  islands.forEach(function(id){
-    callAPI({action:'getIsland',islandId:id,_method:'GET'},function(r){
-      var statusEl = document.getElementById('status-'+id);
-      if(r.island){
-        if(r.island.status === 'in_battle'){
-          statusEl.textContent = '戦中';
-        }else if(r.island.status === 'waiting'){
-          statusEl.textContent = '戦待ち';
-        }else{
-          statusEl.textContent = '';
-        }
-      }
-    });
-  });
-}
-
-// ===== 島選択 =====
-var selectedIslandId = null;
+// 島選択は廃止（コードベースマッチングに変更）
+var selectedIslandId = null; // 互換性のため維持
 
 function selectIsland(islandId, element){
-  // 全ての選択を解除
-  document.querySelectorAll('.island-card').forEach(function(card){
-    card.classList.remove('selected');
-  });
-  // 選択状態にする
-  element.classList.add('selected');
+  // 島選択は廃止されました - コード入力のみ使用
+  console.log('selectIsland is deprecated');
   selectedIslandId = islandId;
   document.getElementById('couponCode').value = islandId;
 }
 
-// ===== 島（クーポン）入室 =====
-function enterIsland(){
+// ===== 島（コード）入室 =====
+async function enterIsland(){
   var entryCode = document.getElementById('couponInput').value.trim().toUpperCase();
-  var islandId = selectedIslandId;
 
-  // コードと島の両方が必要
+  // コードのみ必要（島選択は不要）
   if(!entryCode){showToast('コードを入力してください');return;}
-  if(!islandId){showToast('島を選択してください');return;}
+  if(entryCode.length < 3){showToast('コードは3文字以上で入力してください');return;}
 
-  // まずコードを検証
-  callAPI({action:'validateCode',code:entryCode,userId:currentUser.id,_method:'GET'},function(r){
-    if(!r.valid){
-      showToast(r.message || '無効なコードです');
-      return;
+  // コード=島ID（プレフィックス追加で他システムと衝突防止）
+  var islandId = 'LBAPH_' + entryCode;
+  console.log('Entering island:', islandId);
+
+  try {
+    // Firebase経由で島の状態を確認
+    var island = await getIsland(islandId);
+    console.log('Island status:', island);
+
+    if(!island || island.status === 'empty'){
+      // 誰もいない→1人目として待機開始
+      await startWaitingFirebase(islandId);
+    } else if(island.status === 'waiting'){
+      if(island.waitingUser === currentUser.id){
+        // 自分が待機中→再入室
+        await startWaitingFirebase(islandId);
+      } else {
+        // 他の人が待機中→2人目として参加、バトル開始
+        await joinBattleFirebase(islandId, island.waitingUser);
+      }
+    } else if(island.status === 'in_battle'){
+      // 対戦中→自分が参加者かチェック
+      await checkAndRejoinBattleFirebase(island.currentBattleId, islandId);
+    } else {
+      showToast('このコードは現在使用できません');
     }
-
-    // コード有効 → 島の状態をチェック
-    callAPI({action:'getIsland',islandId:islandId,_method:'GET'},function(r2){
-      if(!r2.island){
-        showToast('島が見つかりません');
-        return;
-      }
-
-      currentIsland=r2.island;
-
-      // 状態に応じた処理
-      switch(r2.island.status){
-        case 'empty':
-          // 誰もいない→1人目として待機開始
-          startWaiting(islandId);
-          break;
-
-        case 'waiting':
-          if(r2.island.waitingUser === currentUser.id){
-            // 自分が待機中→再入室
-            startWaiting(islandId);
-          }else{
-            // 他の人が待機中→2人目として参加、バトル開始
-            joinBattle(islandId, r2.island.waitingUser);
-          }
-          break;
-
-        case 'in_battle':
-          // 対戦中→自分が参加者かチェック
-          checkAndRejoinBattle(r2.island.currentBattleId, islandId);
-          break;
-
-        default:
-          showToast('この島は現在使用できません');
-      }
-    });
-  });
+  } catch(e) {
+    console.error('Error entering island:', e);
+    showToast('エラーが発生しました');
+  }
 }
 
-// バトル中の島に自分が参加者かチェックして復帰
-function checkAndRejoinBattle(battleIdToCheck, islandId){
+// バトル中の島に自分が参加者かチェックして復帰（Firebase版）
+async function checkAndRejoinBattleFirebase(battleIdToCheck, islandId){
   console.log('Checking battle:', battleIdToCheck, 'currentUser:', currentUser.id);
 
-  callAPI({action:'getBattle',battleId:battleIdToCheck,_method:'GET'},function(r){
-    console.log('getBattle response:', JSON.stringify(r));
+  try {
+    var battleDoc = await db.collection('battles').doc(battleIdToCheck).get();
 
-    if(r.battle && r.battle.status === 'active'){
-      console.log('Battle active. creatorId:', r.battle.creatorId, 'joinerId:', r.battle.joinerId, 'currentUser:', currentUser.id);
+    if(battleDoc.exists){
+      var battle = battleDoc.data();
+      console.log('Battle data:', battle);
 
-      // 自分がこのバトルの参加者かチェック（文字列として比較）
-      var myId = String(currentUser.id).toLowerCase();
-      var creatorId = String(r.battle.creatorId || '').toLowerCase();
-      var joinerId = String(r.battle.joinerId || '').toLowerCase();
+      if(battle.status !== 'ended'){
+        var myId = String(currentUser.id).toLowerCase();
+        var creatorId = String(battle.creatorId || '').toLowerCase();
+        var joinerId = String(battle.joinerId || '').toLowerCase();
 
-      console.log('Comparing myId:', myId, 'creatorId:', creatorId, 'joinerId:', joinerId);
-
-      if(creatorId === myId || joinerId === myId){
-        // 参加者→復帰
-        battleId = battleIdToCheck;
-        currentIsland = {id: islandId};
-        isCreator = (creatorId === myId);
-        console.log('User is participant, isCreator:', isCreator);
-        showToast('バトルに復帰します...');
-        startVideoCall();
-      }else{
-        // 3人目→入れない
-        console.log('User is NOT a participant');
-        showToast('この島は戦中です');
-        refreshIslandStatus();
+        if(creatorId === myId || joinerId === myId){
+          battleId = battleIdToCheck;
+          currentIsland = {id: islandId};
+          isCreator = (creatorId === myId);
+          console.log('User is participant, isCreator:', isCreator);
+          showToast('バトルに復帰します...');
+          startVideoCall();
+        } else {
+          showToast('このコードは対戦中です');
+        }
+      } else {
+        showToast('このコードは対戦中です');
       }
-    }else{
-      // バトルが終了しているまたはデータなし
-      console.log('Battle not active or not found:', r);
-      showToast('この島は戦中です');
-      refreshIslandStatus();
+    } else {
+      showToast('このコードは対戦中です');
     }
-  });
-}
-
-function startWaiting(islandId){
-  callAPI({action:'enterIsland',islandId:islandId,userId:currentUser.id},function(r){
-    if(r.success){
-      isCreator=true;
-      currentIsland={id:islandId};
-      document.getElementById('waitingIsland').textContent='島: '+islandId;
-      document.getElementById('waitingModal').classList.add('show');
-      startPolling();
-    }else{
-      showToast(r.message||'入室エラー');
-    }
-  });
-}
-
-function cancelWaiting(){
-  stopPolling();
-  if(currentIsland){
-    callAPI({action:'leaveIsland',islandId:currentIsland.id,userId:currentUser.id},function(){});
+  } catch(e) {
+    console.error('Error checking battle:', e);
+    showToast('エラーが発生しました');
   }
-  document.getElementById('waitingModal').classList.remove('show');
-  currentIsland=null;
-  isCreator=false;
 }
 
-function joinBattle(islandId,creatorId){
-  callAPI({action:'createBattle',islandId:islandId,creatorId:creatorId,joinerId:currentUser.id},function(r){
-    if(r.success){
-      battleId=r.battleId;
-      isCreator=false;
-      startVideoCall();
-    }else{
-      showToast(r.message||'バトル開始エラー');
-    }
-  });
-}
+// 待機開始（Firebase版）
+async function startWaitingFirebase(islandId){
+  try {
+    await enterIslandFirebase(islandId, currentUser.id);
+    isCreator = true;
+    currentIsland = {id: islandId};
 
-// ===== ポーリング =====
-function startPolling(){
-  pollingTimer=setInterval(function(){
-    callAPI({action:'getIsland',islandId:currentIsland.id,_method:'GET'},function(r){
-      if(r.island && r.island.status==='in_battle' && r.island.currentBattleId){
-        stopPolling();
-        battleId=r.island.currentBattleId;
+    // コードを表示（プレフィックスを除去）
+    var displayCode = islandId.replace('LBAPH_', '');
+    document.getElementById('waitingIsland').textContent = 'コード: ' + displayCode;
+    document.getElementById('waitingModal').classList.add('show');
+
+    // Firebase リアルタイム監視開始
+    islandUnsubscribe = subscribeToIsland(islandId, async function(island){
+      console.log('Island update:', island);
+      if(island.status === 'in_battle' && island.currentBattleId){
+        // マッチング成立
+        battleId = island.currentBattleId;
         document.getElementById('waitingModal').classList.remove('show');
         startVideoCall();
       }
     });
-  },POLLING_INTERVAL);
+
+  } catch(e) {
+    console.error('Error starting wait:', e);
+    showToast('入室エラー');
+  }
 }
 
-function stopPolling(){
-  if(pollingTimer){
-    clearInterval(pollingTimer);
-    pollingTimer=null;
+// 待機キャンセル（Firebase版）
+async function cancelWaiting(){
+  cleanupSubscriptions();
+  if(currentIsland){
+    try {
+      await leaveIslandFirebase(currentIsland.id, currentUser.id);
+    } catch(e) {
+      console.error('Error leaving island:', e);
+    }
+  }
+  document.getElementById('waitingModal').classList.remove('show');
+  currentIsland = null;
+  isCreator = false;
+}
+
+// バトル参加（Firebase版）
+async function joinBattleFirebase(islandId, creatorId){
+  try {
+    var newBattleId = await createBattleFirebase(islandId, creatorId, currentUser.id);
+    battleId = newBattleId;
+    currentIsland = {id: islandId};
+    isCreator = false;
+    startVideoCall();
+  } catch(e) {
+    console.error('Error joining battle:', e);
+    showToast('バトル開始エラー');
   }
 }
 
@@ -571,19 +727,37 @@ async function startVideoCall(){
     createPeerConnection();
 
     if(isCreator){
-      // Offer作成
-      var offer=await peerConnection.createOffer();
+      // Offer作成 → Firebase書き込み
+      var offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
-      callAPI({action:'writeOffer',battleId:battleId,sdp:offer.sdp,userId:currentUser.id},function(){});
-      // Answer待ち
-      pollForAnswer();
-    }else{
-      // Offer待ち→Answer返す
-      pollForOffer();
+      await writeOfferFirebase(battleId, offer.sdp, currentUser.id);
+
+      // Answer監視（Firebase realtime）
+      signalingUnsubscribe = subscribeToAnswer(battleId, async function(answer){
+        if(answer && answer.sdp && peerConnection.signalingState !== 'stable'){
+          console.log('Answer received');
+          await peerConnection.setRemoteDescription(new RTCSessionDescription({type:'answer', sdp:answer.sdp}));
+        }
+      });
+    } else {
+      // Offer監視 → Answer返す（Firebase realtime）
+      signalingUnsubscribe = subscribeToOffer(battleId, async function(offer){
+        if(offer && offer.sdp && !peerConnection.remoteDescription){
+          console.log('Offer received');
+          await peerConnection.setRemoteDescription(new RTCSessionDescription({type:'offer', sdp:offer.sdp}));
+          var answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+          await writeAnswerFirebase(battleId, answer.sdp, currentUser.id);
+        }
+      });
     }
 
-    // ICE候補ポーリング
-    pollForIceCandidates();
+    // ICE候補監視（Firebase realtime）
+    iceCandidatesUnsubscribe = subscribeToIceCandidates(battleId, currentUser.id, function(candidate){
+      if(peerConnection && peerConnection.remoteDescription){
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    });
 
   }catch(e){
     showToast('カメラエラー: '+e.message);
@@ -684,14 +858,7 @@ function createPeerConnection(){
 
   peerConnection.onicecandidate=function(e){
     if(e.candidate){
-      callAPI({
-        action:'writeIceCandidate',
-        battleId:battleId,
-        candidate:e.candidate.candidate,
-        sdpMid:e.candidate.sdpMid,
-        sdpMLineIndex:e.candidate.sdpMLineIndex,
-        userId:currentUser.id
-      },function(){});
+      writeIceCandidateFirebase(battleId, e.candidate, currentUser.id);
     }
   };
 
@@ -703,52 +870,6 @@ function createPeerConnection(){
       updateConnectionStatus('disconnected');
     }
   };
-}
-
-function pollForOffer(){
-  var timer=setInterval(function(){
-    callAPI({action:'getSignaling',battleId:battleId,_method:'GET'},async function(r){
-      if(r.offer && r.offer.sdp){
-        clearInterval(timer);
-        await peerConnection.setRemoteDescription(new RTCSessionDescription({type:'offer',sdp:r.offer.sdp}));
-        var answer=await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        callAPI({action:'writeAnswer',battleId:battleId,sdp:answer.sdp,userId:currentUser.id},function(){});
-      }
-    });
-  },1000);
-}
-
-function pollForAnswer(){
-  var timer=setInterval(function(){
-    callAPI({action:'getSignaling',battleId:battleId,_method:'GET'},async function(r){
-      if(r.answer && r.answer.sdp){
-        clearInterval(timer);
-        await peerConnection.setRemoteDescription(new RTCSessionDescription({type:'answer',sdp:r.answer.sdp}));
-      }
-    });
-  },1000);
-}
-
-function pollForIceCandidates(){
-  var processed=new Set();
-  setInterval(function(){
-    callAPI({action:'getIceCandidates',battleId:battleId,excludeUserId:currentUser.id,_method:'GET'},function(r){
-      if(r.candidates){
-        r.candidates.forEach(function(c){
-          var key=c.candidate+c.sdpMid;
-          if(!processed.has(key) && peerConnection && peerConnection.remoteDescription){
-            processed.add(key);
-            peerConnection.addIceCandidate(new RTCIceCandidate({
-              candidate:c.candidate,
-              sdpMid:c.sdpMid,
-              sdpMLineIndex:c.sdpMLineIndex
-            }));
-          }
-        });
-      }
-    });
-  },1000);
 }
 
 function updateConnectionStatus(status){
@@ -833,7 +954,7 @@ function confirmExit(){
 
 // 一時退出（セッションは保持）
 function exitBattle(){
-  stopPolling();
+  cleanupSubscriptions();
   stopAllTimers();
 
   if(localStream){
@@ -894,7 +1015,7 @@ function exitBattle(){
 }
 
 function endCall(){
-  stopPolling();
+  cleanupSubscriptions();
   stopAllTimers();
 
   if(localStream){
@@ -907,7 +1028,7 @@ function endCall(){
   }
 
   if(battleId && currentIsland){
-    callAPI({action:'endBattle',battleId:battleId,islandId:currentIsland.id},function(){});
+    endBattleFirebase(battleId, currentIsland.id);
   }
 
   // フルスクリーン解除
@@ -1300,15 +1421,37 @@ async function resumeVideoCall(){
     createPeerConnection();
 
     if(isCreator){
+      // Offer作成 → Firebase書き込み
       var offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
-      callAPI({action:'writeOffer',battleId:battleId,sdp:offer.sdp,userId:currentUser.id},function(){});
-      pollForAnswer();
-    }else{
-      pollForOffer();
+      await writeOfferFirebase(battleId, offer.sdp, currentUser.id);
+
+      // Answer監視（Firebase realtime）
+      signalingUnsubscribe = subscribeToAnswer(battleId, async function(answer){
+        if(answer && answer.sdp && peerConnection.signalingState !== 'stable'){
+          console.log('Answer received');
+          await peerConnection.setRemoteDescription(new RTCSessionDescription({type:'answer', sdp:answer.sdp}));
+        }
+      });
+    } else {
+      // Offer監視 → Answer返す（Firebase realtime）
+      signalingUnsubscribe = subscribeToOffer(battleId, async function(offer){
+        if(offer && offer.sdp && !peerConnection.remoteDescription){
+          console.log('Offer received');
+          await peerConnection.setRemoteDescription(new RTCSessionDescription({type:'offer', sdp:offer.sdp}));
+          var answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+          await writeAnswerFirebase(battleId, answer.sdp, currentUser.id);
+        }
+      });
     }
 
-    pollForIceCandidates();
+    // ICE候補監視（Firebase realtime）
+    iceCandidatesUnsubscribe = subscribeToIceCandidates(battleId, currentUser.id, function(candidate){
+      if(peerConnection && peerConnection.remoteDescription){
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    });
 
     // 残り時間を計算してタイマー再開
     var elapsed = Date.now() - battleStartTime;
