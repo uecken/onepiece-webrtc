@@ -75,6 +75,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let battle = null;
     let offerReceived = false;
     let answerReceived = false;
+    let isDisconnecting = false;
 
     // Settings state
     let currentViewMode = localStorage.getItem('viewMode') || VIEW_MODE_CONFIG.default;
@@ -264,18 +265,40 @@ document.addEventListener('DOMContentLoaded', async () => {
      * Handle disconnect
      */
     async function handleDisconnect() {
-        // Cleanup WebRTC
-        webrtcService.disconnect();
+        // Prevent double execution
+        if (isDisconnecting) {
+            console.log('Disconnect already in progress, skipping');
+            return;
+        }
+        isDisconnecting = true;
 
-        // Cleanup Firebase subscriptions
-        firebaseService.cleanup();
+        console.log('handleDisconnect called');
 
-        // End battle and reset island
-        if (battle && battle.islandId) {
-            try {
+        // Update status
+        updateStatus('disconnected', '接続が切断されました');
+
+        try {
+            // 1. End battle and reset island FIRST (most important!)
+            // This ensures the island is reset before any cleanup
+            if (battleId && battle && battle.islandId) {
+                console.log('Resetting island:', battle.islandId);
                 await firebaseService.endBattle(battleId, battle.islandId);
-            } catch (error) {
-                console.error('Error ending battle:', error);
+            }
+
+            // 2. Cleanup WebRTC
+            webrtcService.disconnect();
+
+            // 3. Cleanup Firebase subscriptions (after endBattle completes)
+            firebaseService.cleanup();
+        } catch (error) {
+            console.error('Error during disconnect cleanup:', error);
+            // Even if endBattle fails, try to force reset the island
+            if (battle && battle.islandId) {
+                try {
+                    await firebaseService.forceResetIsland(battle.islandId);
+                } catch (e) {
+                    console.error('Force reset also failed:', e);
+                }
             }
         }
 
@@ -724,6 +747,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         battle = await firebaseService.getBattle(battleId);
         if (!battle) {
             showErrorModal('対戦が見つかりません。');
+            return;
+        }
+
+        // Check if battle is already ended (prevents redirect loop on re-match)
+        if (battle.status === 'ended') {
+            showErrorModal('この対戦は既に終了しています。');
             return;
         }
 

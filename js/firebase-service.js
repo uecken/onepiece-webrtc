@@ -397,9 +397,65 @@ class FirebaseService {
                 currentBattleId: null
             });
 
+            // Cleanup signaling data
+            await this.cleanupSignaling(battleId);
+
             console.log(`Battle ${battleId} ended, island ${islandId} reset`);
         } catch (error) {
             console.error('Error ending battle:', error);
+            // Try to reset island even if other operations failed
+            try {
+                await this.forceResetIsland(islandId);
+            } catch (e) {
+                console.error('Force reset island failed:', e);
+            }
+        }
+    }
+
+    /**
+     * Force reset island to empty state
+     * @param {string} islandId - Island ID
+     */
+    async forceResetIsland(islandId) {
+        await this.db.collection('islands').doc(islandId).update({
+            status: 'empty',
+            waitingUser: null,
+            users: [],
+            currentBattleId: null
+        });
+        console.log(`Island ${islandId} force reset`);
+    }
+
+    /**
+     * Cleanup signaling data after battle ends
+     * @param {string} battleId - Battle ID
+     */
+    async cleanupSignaling(battleId) {
+        try {
+            // Get all ICE candidates in the subcollection
+            const iceCandidatesRef = this.db
+                .collection('signaling')
+                .doc(battleId)
+                .collection('iceCandidates');
+
+            const iceDocs = await iceCandidatesRef.get();
+
+            // Use batch to delete all documents
+            const batch = this.db.batch();
+
+            // Delete ICE candidates
+            iceDocs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+
+            // Delete the signaling document itself
+            batch.delete(this.db.collection('signaling').doc(battleId));
+
+            await batch.commit();
+            console.log(`Signaling data for battle ${battleId} cleaned up`);
+        } catch (error) {
+            // Non-critical error - log but don't throw
+            console.error('Signaling cleanup error:', error);
         }
     }
 

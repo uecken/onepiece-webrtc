@@ -105,10 +105,41 @@ document.addEventListener('DOMContentLoaded', async () => {
      * @param {Object} island - Island data
      */
     async function handleIslandClick(island) {
-        // Can't join if in battle
+        // Cleanup any existing subscription before handling new island click
+        if (islandSubscription) {
+            islandSubscription();
+            islandSubscription = null;
+        }
+
+        // Check if in battle - but also check for stale battles
         if (island.status === 'in_battle') {
-            alert('この島では対戦中です。他の島を選んでください。');
-            return;
+            // Check if the battle is stale (ended or older than 5 minutes)
+            if (island.currentBattleId) {
+                try {
+                    const battle = await firebaseService.getBattle(island.currentBattleId);
+                    const isStale = !battle ||
+                        battle.status === 'ended' ||
+                        (battle.createdAt &&
+                         (Date.now() - battle.createdAt.toDate().getTime()) > 5 * 60 * 1000);
+
+                    if (isStale) {
+                        console.log('Stale battle detected, resetting island:', island.id);
+                        await firebaseService.forceResetIsland(island.id);
+                        // Continue with entering the island (don't return)
+                    } else {
+                        alert('この島では対戦中です。他の島を選んでください。');
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Error checking stale battle:', error);
+                    alert('この島では対戦中です。他の島を選んでください。');
+                    return;
+                }
+            } else {
+                // No battle ID but status is in_battle - reset it
+                console.log('Island in_battle but no battleId, resetting:', island.id);
+                await firebaseService.forceResetIsland(island.id);
+            }
         }
 
         // If someone is waiting, join them
@@ -143,8 +174,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             islandSubscription = firebaseService.subscribeToIsland(island.id, async (updatedIsland) => {
                 // Check if battle started
                 if (updatedIsland.status === 'in_battle' && updatedIsland.currentBattleId) {
-                    // Navigate to battle screen as creator
-                    navigateToBattle(updatedIsland.currentBattleId, 'creator');
+                    // Verify battle is valid before navigating (prevents stale battleId issue)
+                    const battle = await firebaseService.getBattle(updatedIsland.currentBattleId);
+                    if (battle && battle.status !== 'ended') {
+                        // Cleanup subscription before navigating
+                        if (islandSubscription) {
+                            islandSubscription();
+                            islandSubscription = null;
+                        }
+                        // Navigate to battle screen as creator
+                        navigateToBattle(updatedIsland.currentBattleId, 'creator');
+                    } else {
+                        // Stale battleId detected, ignore this update
+                        console.warn('Stale battleId detected, ignoring:', updatedIsland.currentBattleId);
+                    }
+                    return;
                 }
 
                 // Check if we were removed (someone else took over)
@@ -200,6 +244,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Event Listeners
     cancelWaitingBtn.addEventListener('click', cancelWaiting);
+
+    // AR mode button
+    const arModeBtn = document.getElementById('ar-mode-btn');
+    if (arModeBtn) {
+        arModeBtn.addEventListener('click', navigateToAR);
+    }
 
     // Handle page unload - leave island if waiting
     window.addEventListener('beforeunload', async (event) => {

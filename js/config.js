@@ -8,12 +8,31 @@ const firebaseConfig = {
     appId: "1:977136307911:web:5a1989e8b6373bf7d4f8e2"
 };
 
-// STUN Servers for WebRTC
-const STUN_SERVERS = [
+// ICE Servers for WebRTC (STUN + TURN)
+const ICE_SERVERS = [
+    // STUN servers (for direct connection when possible)
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
+    // Free TURN servers (OpenRelay by Metered - for NAT traversal)
+    {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+    },
+    {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+    },
+    {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+    }
 ];
+
+// Legacy alias for compatibility
+const STUN_SERVERS = ICE_SERVERS;
 
 // Island Configuration
 const ISLAND_CONFIG = [
