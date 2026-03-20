@@ -88,9 +88,14 @@ function getUrlParams() {
  * Navigate to battle screen
  * @param {string} battleId - Battle ID
  * @param {string} role - 'creator' or 'joiner'
+ * @param {boolean} autostart - Auto-start camera without showing modal
  */
-function navigateToBattle(battleId, role) {
-    window.location.href = `battle.html?battleId=${encodeURIComponent(battleId)}&role=${encodeURIComponent(role)}`;
+function navigateToBattle(battleId, role, autostart = false) {
+    let url = `battle.html?battleId=${encodeURIComponent(battleId)}&role=${encodeURIComponent(role)}`;
+    if (autostart) {
+        url += '&autostart=true';
+    }
+    window.location.href = url;
 }
 
 /**
@@ -98,6 +103,13 @@ function navigateToBattle(battleId, role) {
  */
 function navigateToMatching() {
     window.location.href = 'index.html';
+}
+
+/**
+ * Navigate to AR screen
+ */
+function navigateToAR() {
+    window.location.href = 'ar.html';
 }
 
 /**

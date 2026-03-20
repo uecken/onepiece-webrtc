@@ -53,6 +53,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const params = getUrlParams();
     const battleId = params.get('battleId');
     const role = params.get('role'); // 'creator' or 'joiner'
+    const autostart = params.get('autostart') === 'true';
 
     // Validate parameters
     if (!battleId || !role) {
@@ -376,8 +377,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // Cleanup reconnect subscription
                     cleanupReconnectionWait();
 
-                    // Navigate to new battle as joiner
-                    navigateToBattle(newBattleId, 'joiner');
+                    // Navigate to new battle as joiner with autostart
+                    navigateToBattle(newBattleId, 'joiner', true);
                 } catch (error) {
                     console.error('Failed to create reconnection battle:', error);
                     updateStatus('error', '再接続に失敗しました');
@@ -392,7 +393,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (newBattle && (newBattle.creatorId === userId || newBattle.joinerId === userId)) {
                     cleanupReconnectionWait();
                     const role = newBattle.creatorId === userId ? 'creator' : 'joiner';
-                    navigateToBattle(island.currentBattleId, role);
+                    navigateToBattle(island.currentBattleId, role, true);
                 }
             }
         });
@@ -885,6 +886,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 handleDisconnect();
             }
         });
+
+        // Autostart camera if coming from reconnection
+        if (autostart) {
+            console.log('Autostart enabled - initializing camera automatically');
+            cameraModal.classList.add('hidden');
+            const success = await initializeCamera();
+            if (success) {
+                await initializeConnection();
+                updateAudioButtonState(webrtcService.isAudioEnabled);
+                updateVideoButtonState(webrtcService.isVideoEnabled);
+            }
+        }
 
     } catch (error) {
         console.error('Initialization error:', error);
